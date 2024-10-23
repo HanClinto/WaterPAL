@@ -8,6 +8,7 @@
 
 /*
 
+Oct 09 - Set the RTC time from the cell tower time
 Sep 20 - Fixed Clint's bug w/ "+=" vs "+"
 Sep 19 - added GPS test and send from lines 318-368
 Aug 31 - Cell tower info added
@@ -83,6 +84,15 @@ Task: Audit time / profile functions and ensure that we don't have unnecessary s
 Cleanup: Clean up debug prints and ensure that we have a good logging system in place.
 
 Task: Save detailed log information to SD card (if present) -- part of above task to improve the logging system overall.
+
+Task: Obtain a unique ID for each device without having to individually program it. Can we get the MAC address of a device without knowing the SIM network information, or possibly some other unique ID?
+
+Task: How to tie a unique QR code to each device?
+
+Task: Device should be resilient to losing power and going through first-time initialization many times.
+
+Idea: Perhaps use an SD card as the trigger for whether or not a device is in debug-mode.
+
 
 */
 
@@ -176,17 +186,9 @@ void setup()
     delay(50);                              // Delay for a bit between each read.
   }
 
-  // Democratically vote for the value of the input pin
-  if (totalReading * 2 > NUM_READS)
-  { 
-    // Majority of readings are HIGH
-    input_pin_value = HIGH;
-  }
-  else
-  {
-    // Majority of readings are LOW
-    input_pin_value = LOW;
-  }
+  // Democratically vote for the value of the input pin.
+  //  If we have a majority of readings that are HIGH, then set the input pin value to HIGH. If we have a majority of readings that are LOW, then set the input pin value to LOW.
+  input_pin_value = (totalReading * 2 > NUM_READS);
 
   Serial.println("  Current input pin value: " + String(input_pin_value));
 
@@ -298,27 +300,31 @@ int8_t setLocalTimeFromCCLK() {
     // AT+CCLK?
   // Receive
     // -> +CCLK: "24/10/08,23:39:49-16"
-    // -> 
+    // ->
     // -> OK
+
+  // TODO: Read the local time, then calculate and log the drift if we are in debug mode.
+
   modem.sendAT("+CCLK?");
   if (modem.waitResponse("+CCLK:") != 1) { return 0; }
 
+  // Receive the timestamp string from the modem
   String timestamp = SerialAT.readString();
   timestamp.trim();
 
   struct tm timeinfo;
   // Zero-out the struct
   memset(&timeinfo, 0, sizeof(timeinfo));
-  
+
   int16_t timezone_quarterHourOffset; // tm struct does not have a space for the timezone offset, so store it in a separate number for now.
-  
+
   // Note that the timezone offset is in quarter-hour increments, which can handle things like India's 5.5 hour offset.
   if (!parseTimestamp(timestamp, timeinfo, timezone_quarterHourOffset)) {
     Serial.println(">>> Failed to parse timestamp: " + timestamp);
     return 0;
   }
 
-  // TODO: How to properly use timezone information? 
+  // TODO: How to properly use timezone information?
   //  NOTE: May not be needed if we deal primarily in local time. Important thing is to send SMS messages at 10pm local, so if UTC is not set correctly, that's probably fine.
   // TODO: How to populate timeinfo.tm_isdst properly?
   //  NOTE: Most developing countries do not use DST, so we can default to 0 for now.
@@ -328,7 +334,7 @@ int8_t setLocalTimeFromCCLK() {
   struct timeval tv;
   tv.tv_sec = t_of_day;
   tv.tv_usec = 0;
-  settimeofday(&tv, NULL);
+  settimeofday(&tv, NULL); // Update the RTC with the new time epoch offset.
 
   int8_t res = modem.waitResponse(); // Clear the OK
 
@@ -340,7 +346,7 @@ void doFirstTimeInitialization()
 {
   Serial.println("doFirstTimeInitialization()");
   printLocalTime(); // NOTE: This should print an uninitialized time (1970) until we set the time from the cell tower.
-  
+
   //delay(1000); // TODO: Unneeded?
   // Ensure that we can communicate with the cell modem, and that it can connect with the tower
   // If it can connect with the tower, then set the internal RTC according to the cell tower's information so that we have correct local time.
@@ -367,7 +373,7 @@ void doFirstTimeInitialization()
   }
 
   // There are two ways to initialize the modem -- restart, or simple init.
-  //  
+  //
   if (true) {
     Serial.println("Initializing modem via restart..."); // Start modem on next line
     if (!modem.restart())
