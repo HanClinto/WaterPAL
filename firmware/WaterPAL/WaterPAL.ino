@@ -30,8 +30,12 @@ TinyGsm modem(SerialAT);
 #define INPUT_PIN 14               // Check Lilygo
 #define INPUT_PIN_GPIO GPIO_NUM_14 // see line above
 
-//  Purpose: use for SMS send timing?
-#define SMS_SEND_TIME_HOUR 22
+// How frequently do we want to send an SMS message?
+//#define SMS_DAILY_SEND_INTERVAL 22 * (60 * 60) // 22 hours in seconds
+// Set to 1 hour for testing purposes
+// #define SMS_DAILY_SEND_INTERVAL 1 * (60 * 60) // 1 hour in seconds
+// Set to 5 minutes for testing purposes
+ #define SMS_DAILY_SEND_INTERVAL 5 * 60 // 5 minutes in seconds
 
 // Steve - August 8 - added modem definitions
 #define UART_BAUD 9600 //  Baud rate dencreased from 115200 to 9600. This is for the SIM part only.
@@ -44,7 +48,20 @@ TinyGsm modem(SerialAT);
 volatile RTC_DATA_ATTR int bootCount = 0;
 volatile RTC_DATA_ATTR int64_t total_water_usage_time_s = 0; // Total time in seconds that the water pump has been in use
 volatile RTC_DATA_ATTR int64_t last_rising_edge_time_s = 0;  // Seconds since epoch of the last rising edge
-volatile RTC_DATA_ATTR int64_t last_send_time_s = 0;         // Seconds since epoch of the last SMS send time
+
+volatile RTC_DATA_ATTR int64_t last_sms_send_time_s = 0;         // Seconds since epoch of the last SMS send time
+volatile RTC_DATA_ATTR int64_t last_extra_sensor_read_time_s = 0;// Seconds since epoch of the last extra sensor read
+
+#define NUM_EXTRA_SENSORS 2
+#define NUM_EXTRA_SENSOR_READS_PER_DAY 24
+
+// How frequently do we want to log from peripheral sensors? (temp, humidity, etc)
+#define EXTRA_SENSOR_READ_INTERVAL (24 * 60 * 60) / NUM_EXTRA_SENSOR_READS_PER_DAY
+
+// Array to store the last read values from the extra sensors
+volatile RTC_DATA_ATTR float extra_sensor_values[NUM_EXTRA_SENSORS * NUM_EXTRA_SENSOR_READS_PER_DAY];
+
+volatile RTC_DATA_ATTR int64_t last_time_drift_val_s = 0; // Time drift in seconds at the last check
 
 // Aug 29
 uint32_t tStamp = 0;
@@ -57,7 +74,8 @@ float lat;
 float lon;
 
 // Function prototypes
-void doDeepSleep();
+void doTimeChecks();
+void doDeepSleep(time_t nextWakeTime);
 void doFirstTimeInitialization();
 void doLogRisingEdge();
 void doLogFallingEdge();
@@ -132,14 +150,14 @@ void setup()
   }
   else if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER)
   {
-    // If it's waking up from deep sleep due to our SMS send timer going off, then send a text message (to a configured number) with the the previous day's cumulative water usage time. If the message is sent successfully, then clear the cumulative amount and go back to sleep for another 24 hrs.
-    doSendSMS();
-  }
-  // TODO: Even if we woke up for a rising edge, we should still check to see if it's time to send an SMS.
+    Serial.println("  Waking up from timer");
   // TODO: Add support to log other sensors on our regular wakeup timer check. I.E., log humidity / temperature / tower signal quality every 30 - 60 minutes, but only package up data and send as an SMS once per day.
+  }
+
+  // Even if we woke up for a rising edge, we should still check to see if it's time to send an SMS.
 
   // No matter how we woke up, always go back to sleep at the end.
-  doDeepSleep();
+  doTimeChecks();
 }
 
 void printLocalTime(){
@@ -216,6 +234,10 @@ int8_t setLocalTimeFromCCLK() {
   modem.sendAT("+CCLK?");
   if (modem.waitResponse("+CCLK:") != 1) { return 0; }
 
+  // Request the current system time so that we can calculate the drift between the modem's time and the system time.
+  struct timeval tv_orig;
+  gettimeofday(&tv_orig, NULL);
+
   // Receive the timestamp string from the modem
   String timestamp = SerialAT.readString();
   timestamp.trim();
@@ -239,12 +261,20 @@ int8_t setLocalTimeFromCCLK() {
 
   // Set the system time
   time_t t_of_day = mktime(&timeinfo);
-  struct timeval tv;
-  tv.tv_sec = t_of_day;
-  tv.tv_usec = 0;
-  settimeofday(&tv, NULL); // Update the RTC with the new time epoch offset.
+  struct timeval tv_new;
+  tv_new.tv_sec = t_of_day;
+  tv_new.tv_usec = 0;
+  settimeofday(&tv_new, NULL); // Update the RTC with the new time epoch offset.
 
   int8_t res = modem.waitResponse(); // Clear the OK
+
+  // # Clock Drift Calculation
+  // Calculate the offset between the modem's time and the original system time
+  int64_t time_diff_s = tv_new.tv_sec - tv_orig.tv_sec;
+
+  Serial.println(">> TIME DRIFT: Drift between modem and system time: " + String(time_diff_s) + " seconds");
+
+  last_time_drift_val_s = time_diff_s;
 
   return res;
 }
@@ -522,9 +552,10 @@ void doSendSMS()
   // TODO: Power up the modem (take it out of airplane / low-power mode, or whatever's needed)
 
   // TODO: Send the SMS
+  // TODO: Add the extra sensor data to the SMS message
 
-  Serial.println("  Sending SMS with water usage time: " + String(total_water_usage_time_s) + " seconds");
-  Serial.println("  SMS sent at " + String(timeinfo.tm_hour) + ":" + String(timeinfo.tm_min) + ":" + String(timeinfo.tm_sec));
+  Serial.println("  >> Sending SMS with water usage time: " + String(total_water_usage_time_s) + " seconds");
+  Serial.println("  >> SMS sent at " + String(timeinfo.tm_hour) + ":" + String(timeinfo.tm_min) + ":" + String(timeinfo.tm_sec));
 
   // TODO: Confirm that it sent correctly, and if so, clear the total water usage time.
   bool success = true;
@@ -534,7 +565,14 @@ void doSendSMS()
     Serial.println("SMS sent successfully");
     // Clear the total water usage time
     total_water_usage_time_s = 0;
-    last_send_time_s = tv.tv_sec;
+    // Clear our extra sensor data
+    for (int i = 0; i < NUM_EXTRA_SENSORS * NUM_EXTRA_SENSOR_READS_PER_DAY; i++)
+    {
+      extra_sensor_values[i] = 0;
+    }
+
+    // Save our last send time
+    last_sms_send_time_s = tv.tv_sec;
   }
   else
   {
@@ -544,33 +582,88 @@ void doSendSMS()
   // TODO: Power down the modem, or put it back into low-power mode
 }
 
-// This function takes care of all housekeeping needed to go to deep sleep and save our battery.
-void doDeepSleep()
-{
-  Serial.println("doDeepSleep()");
-  // Calculate the amount of time remaining until our target SMS send time (10pm)
-  // Set wake conditions of the device to be either the target SMS send time or a rising edge on the water sensor input pin -- whichever comes first.
+void doReadExtraSensors(int sensorReadIndex) {
+  // TODO: Read the extra sensors here (such as temperature, humidity, etc)
 
-  // Calculate the time until the target SMS send time. Get current RTC time via gettimeofday()
+  // TODO: Read these values for real
+  float sensorVal1 = 42.35;
+  float sensorVal2 = 69.42;
+
+  // Store the sensor values in the array
+  extra_sensor_values[sensorReadIndex * NUM_EXTRA_SENSORS] = sensorVal1;
+  extra_sensor_values[sensorReadIndex * NUM_EXTRA_SENSORS + 1] = sensorVal2;
+}
+
+void doTimeChecks() {
+  // Get the current system time
   struct timeval tv;
   gettimeofday(&tv, NULL);
   time_t now = tv.tv_sec;
   struct tm timeinfo;
   localtime_r(&now, &timeinfo);
-  int hours_until_sms_send = SMS_SEND_TIME_HOUR - timeinfo.tm_hour;
-  if (hours_until_sms_send < 0)
+
+  // What is the epoch time of the previous midnight?
+  time_t prev_midnight = now - timeinfo.tm_hour * 3600 - timeinfo.tm_min * 60 - timeinfo.tm_sec;
+
+  // What is our current time since midnight?
+  int seconds_since_midnight = now - prev_midnight;
+
+  // When was the last time that we should have read the sensors?
+  time_t prev_scheduled_sensor_read_time = prev_midnight + int(seconds_since_midnight / EXTRA_SENSOR_READ_INTERVAL) * EXTRA_SENSOR_READ_INTERVAL;
+
+  // If the previous sensor read time is newer than the last time we read the sensors, then we should read the sensors now.
+  // TODO: Add a grace period here, so that if we're within X minutes of the target time, then do the send / read anyways?
+  if (prev_scheduled_sensor_read_time > last_extra_sensor_read_time_s)
   {
-    hours_until_sms_send += 24;
+    // Which index should we use to store this reading in today's array?
+    int sensorReadIndex = int(seconds_since_midnight / EXTRA_SENSOR_READ_INTERVAL);
+
+    doReadExtraSensors(sensorReadIndex);
+
+    last_extra_sensor_read_time_s = now;
   }
-  int minutes_until_sms_send = 60 - timeinfo.tm_min;
-  int seconds_until_sms_send = 60 - timeinfo.tm_sec;
-  int total_seconds_until_sms_send = hours_until_sms_send * 3600 + minutes_until_sms_send * 60 + seconds_until_sms_send;
 
-  // TODO: I don't think that this time delta is being calculated correctly just yet. Needs moar work!
-  //  NOTE: Not sure if we want to add the full flexibility of CRON-style configuration, but that might be good to approximate for configuring the frequency of sensor readings and SMS updates. Perhaps even function pointers with their call frequency defined at the top of the program?
+  // When was the previous time that we should have sent an SMS today?
+  time_t prev_scheduled_sms_send_time = prev_midnight + long(seconds_since_midnight / SMS_DAILY_SEND_INTERVAL) * SMS_DAILY_SEND_INTERVAL;
 
-  // NOTE: This will not be correct until we set the time correctly in doFirstTimeInitialization()
-  //  For more info, see: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/system_time.html
+  // If the previous due SMS send time is newer than the last time we sent an SMS, then we should send an SMS now.
+  // TODO: Add a grace period here, so that if we're within X minutes of the target time, then do the send / read anyways?
+  if (prev_scheduled_sms_send_time > last_sms_send_time_s)
+  {
+    // Send our SMS and clear our accumulated data readings
+    doSendSMS();
+  }
+
+  time_t next_scheduled_sms_send_time = prev_scheduled_sms_send_time + SMS_DAILY_SEND_INTERVAL;
+  time_t next_scheduled_sensor_read_time = prev_scheduled_sensor_read_time + EXTRA_SENSOR_READ_INTERVAL;
+
+  // Figure out which of the two times is closer, and set the next wake up time to be that time.
+  time_t next_wake_time = next_scheduled_sms_send_time;
+  if (next_scheduled_sensor_read_time < next_scheduled_sms_send_time)
+  {
+    next_wake_time = next_scheduled_sensor_read_time;
+  }
+
+  doDeepSleep(next_wake_time);
+}
+
+// This function takes care of all housekeeping needed to go to deep sleep and save our battery.
+void doDeepSleep(time_t nextWakeTime)
+{
+  Serial.println("doDeepSleep()");
+  // Calculate the amount of time remaining until our target SMS send time (10pm)
+  // Set wake conditions of the device to be either the target SMS send time or a rising edge on the water sensor input pin -- whichever comes first.
+
+  // Calculate the time until the next wakeup time. Get current RTC time via gettimeofday()
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  time_t now = tv.tv_sec;
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+
+  // Calculate the time until the next wakeup
+  time_t seconds_until_wakeup = nextWakeTime - now;
+
   Serial.println("  Current time of day: " + String(timeinfo.tm_hour) + ":" + String(timeinfo.tm_min) + ":" + String(timeinfo.tm_sec));
 
   int triggerOnEdge = 1; // Default to triggering on a rising edge.
@@ -590,14 +683,13 @@ void doDeepSleep()
   esp_sleep_enable_ext0_wakeup(INPUT_PIN_GPIO, triggerOnEdge);
 
   //  Configure the deep sleep timer
-  // TODO: Re-enable this line when we get timer-based wakeup working.
-  // esp_sleep_enable_timer_wakeup(total_seconds_until_sms_send * 1000000);
+  esp_sleep_enable_timer_wakeup(seconds_until_wakeup * 1000000);
 
   // Log some information for debugging purposes:
   Serial.println("  Total water usage time: " + String(total_water_usage_time_s) + " seconds");
 
   // Go to sleep
-  Serial.println("  Going to sleep now " + String(hours_until_sms_send) + ":" + String(minutes_until_sms_send) + ":" + String(seconds_until_sms_send) + " until next wake up");
+  Serial.println("  Going to sleep now for " + String(seconds_until_wakeup) + " seconds until next scheduled wake up");
   esp_deep_sleep_start();
 }
 
@@ -605,5 +697,5 @@ void loop()
 {
   // Our code shouldn't ever get here, but if we do, then go immediately into deep sleep.
   Serial.println("loop() -- SHOULD NOT BE HERE");
-  doDeepSleep();
+  doTimeChecks();
 }
