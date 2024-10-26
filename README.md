@@ -49,7 +49,11 @@ Possible solution: These devices have an SD Card slot on them. We could compile 
 
 [ ] Task: Need to add support for logging temperature / humidity data on regular intervals
 
-[ ] Task: Need to add support for waking up at regular intervals to log extra data (temp/humidity) as well as send SMS on regular intervals (at least daily, but possibly hourly or even faster for debug purposes).
+[x] Task: Need to add support for waking up at regular intervals to log extra data (temp/humidity) as well as send SMS on regular intervals (at least daily, but possibly hourly or even faster for debug purposes).
+
+[x] Task: Need to enable flexible configuration for the device to wake up and send an SMS every X minutes, every X hours, etc, and actually wake the device up at those times.
+
+[ ] Task: Add a grace period so that if we're too close to waking up again, just do that action.
 
 [ ] Task: Need to build the IoT message receiver to collect SMS messages and collate data.
 
