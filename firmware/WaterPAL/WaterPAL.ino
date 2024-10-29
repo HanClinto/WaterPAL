@@ -35,7 +35,7 @@ TinyGsm modem(SerialAT);
 // Set to 1 hour for testing purposes
 // #define SMS_DAILY_SEND_INTERVAL 1 * (60 * 60) // 1 hour in seconds
 // Set to 5 minutes for testing purposes
- #define SMS_DAILY_SEND_INTERVAL 5 * 60 // 5 minutes in seconds
+ #define SMS_DAILY_SEND_INTERVAL (5 * 60l) // 5 minutes in seconds
 
 // Steve - August 8 - added modem definitions
 #define UART_BAUD 9600 //  Baud rate dencreased from 115200 to 9600. This is for the SIM part only.
@@ -56,7 +56,7 @@ volatile RTC_DATA_ATTR int64_t last_extra_sensor_read_time_s = 0;// Seconds sinc
 #define NUM_EXTRA_SENSOR_READS_PER_DAY 24
 
 // How frequently do we want to log from peripheral sensors? (temp, humidity, etc)
-#define EXTRA_SENSOR_READ_INTERVAL (24 * 60 * 60) / NUM_EXTRA_SENSOR_READS_PER_DAY
+#define EXTRA_SENSOR_READ_INTERVAL ((24 * 60 * 60l) / NUM_EXTRA_SENSOR_READS_PER_DAY)
 
 // Array to store the last read values from the extra sensors
 volatile RTC_DATA_ATTR float extra_sensor_values[NUM_EXTRA_SENSORS * NUM_EXTRA_SENSOR_READS_PER_DAY];
@@ -344,10 +344,11 @@ void doFirstTimeInitialization()
     Serial.println("Counter send successful");
   }
 
-  // This section checks battery level.  See page 58 of SIM manual.  Output from CBC is (battery charging on or off 0,1,2),(perceantgge capacity),(voltage in mV)
+  // This section checks battery level.  See page 58 of SIM manual.  Output from CBC is (battery charging on or off 0,1,2),(percentage capacity),(voltage in mV)
   // NOTE: This does not work if plugged into USB power, so need to connect to (unpowered) FTDI serial port monitor to actually test this.
   // TODO: Probably should wrap this in its own function at some point.
   modem.sendAT("+CBC");                              //    Check battery level.  This line sends the AT request to modem
+  modem.waitResponse("+CBC: ");                      //    Wait for response from modem
   String battLoop = modem.stream.readStringUntil('\n');
   battLoop.trim();
   modem.waitResponse();
@@ -602,14 +603,32 @@ void doTimeChecks() {
   struct tm timeinfo;
   localtime_r(&now, &timeinfo);
 
+  Serial.println("doTimeChecks()");
+  Serial.println("  Current time of day: " + String(timeinfo.tm_hour) + ":" + String(timeinfo.tm_min) + ":" + String(timeinfo.tm_sec) + " (" + String(now) + ")");
+
+  struct tm midnight = timeinfo;
+  midnight.tm_hour = 0;
+  midnight.tm_min = 0;
+  midnight.tm_sec = 0;
   // What is the epoch time of the previous midnight?
-  time_t prev_midnight = now - timeinfo.tm_hour * 3600 - timeinfo.tm_min * 60 - timeinfo.tm_sec;
+  time_t prev_midnight = mktime(&midnight);
+
+  Serial.println("  Previous midnight: " + String(prev_midnight));
+
+  if (now < prev_midnight) {
+    Serial.println("**** Time is before midnight -- something is wrong!");
+    prev_midnight -= 86400; // Subtract one day in seconds
+  }
 
   // What is our current time since midnight?
-  int seconds_since_midnight = now - prev_midnight;
+  long seconds_since_midnight = now - prev_midnight;
+
+  Serial.println("  Seconds since midnight: " + String(seconds_since_midnight));
 
   // When was the last time that we should have read the sensors?
-  time_t prev_scheduled_sensor_read_time = prev_midnight + int(seconds_since_midnight / EXTRA_SENSOR_READ_INTERVAL) * EXTRA_SENSOR_READ_INTERVAL;
+  time_t prev_scheduled_sensor_read_time = prev_midnight + long(seconds_since_midnight / EXTRA_SENSOR_READ_INTERVAL) * EXTRA_SENSOR_READ_INTERVAL;
+
+  Serial.println("  Previous scheduled sensor read time: " + String(prev_scheduled_sensor_read_time));
 
   // If the previous sensor read time is newer than the last time we read the sensors, then we should read the sensors now.
   // TODO: Add a grace period here, so that if we're within X minutes of the target time, then do the send / read anyways?
@@ -626,6 +645,8 @@ void doTimeChecks() {
   // When was the previous time that we should have sent an SMS today?
   time_t prev_scheduled_sms_send_time = prev_midnight + long(seconds_since_midnight / SMS_DAILY_SEND_INTERVAL) * SMS_DAILY_SEND_INTERVAL;
 
+  Serial.println("  Previous scheduled SMS send time: " + String(prev_scheduled_sms_send_time));
+
   // If the previous due SMS send time is newer than the last time we sent an SMS, then we should send an SMS now.
   // TODO: Add a grace period here, so that if we're within X minutes of the target time, then do the send / read anyways?
   if (prev_scheduled_sms_send_time > last_sms_send_time_s)
@@ -637,12 +658,17 @@ void doTimeChecks() {
   time_t next_scheduled_sms_send_time = prev_scheduled_sms_send_time + SMS_DAILY_SEND_INTERVAL;
   time_t next_scheduled_sensor_read_time = prev_scheduled_sensor_read_time + EXTRA_SENSOR_READ_INTERVAL;
 
+  Serial.println("  Next scheduled sensor read time: " + String(next_scheduled_sensor_read_time));
+  Serial.println("  Next scheduled SMS send time: " + String(next_scheduled_sms_send_time));
+
   // Figure out which of the two times is closer, and set the next wake up time to be that time.
   time_t next_wake_time = next_scheduled_sms_send_time;
   if (next_scheduled_sensor_read_time < next_scheduled_sms_send_time)
   {
     next_wake_time = next_scheduled_sensor_read_time;
   }
+
+  Serial.println("  Next wake time: " + String(next_wake_time));
 
   doDeepSleep(next_wake_time);
 }
@@ -664,7 +690,10 @@ void doDeepSleep(time_t nextWakeTime)
   // Calculate the time until the next wakeup
   time_t seconds_until_wakeup = nextWakeTime - now;
 
-  Serial.println("  Current time of day: " + String(timeinfo.tm_hour) + ":" + String(timeinfo.tm_min) + ":" + String(timeinfo.tm_sec));
+  Serial.println("  Current time of day: " + String(timeinfo.tm_hour) + ":" + String(timeinfo.tm_min) + ":" + String(timeinfo.tm_sec) + " (" + String(now) + ")");
+  Serial.println("  Next wake time: " + String(nextWakeTime));
+
+  Serial.println("  Seconds until next wake up: " + String(seconds_until_wakeup));
 
   int triggerOnEdge = 1; // Default to triggering on a rising edge.
 
@@ -683,7 +712,7 @@ void doDeepSleep(time_t nextWakeTime)
   esp_sleep_enable_ext0_wakeup(INPUT_PIN_GPIO, triggerOnEdge);
 
   //  Configure the deep sleep timer
-  esp_sleep_enable_timer_wakeup(seconds_until_wakeup * 1000000);
+  esp_sleep_enable_timer_wakeup(seconds_until_wakeup * 1000000ull);
 
   // Log some information for debugging purposes:
   Serial.println("  Total water usage time: " + String(total_water_usage_time_s) + " seconds");
