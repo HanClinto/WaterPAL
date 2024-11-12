@@ -79,9 +79,6 @@ volatile RTC_DATA_ATTR int64_t last_time_drift_val_s = 0; // Time drift in secon
 
 DHT dht(DHTPIN, DHTTYPE);
 
-
-uint32_t tStamp = 0;
-
 // The current value of the input pin
 int input_pin_value = 0;
 
