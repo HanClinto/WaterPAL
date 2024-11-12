@@ -2,7 +2,7 @@
 // Copyright (c) 2024 Clint Herron and Stephen Peacock
 // MIT License
 
-#define DEST_PHONE_NUMBER "+19876543210" // Update phone numbers here.  Clint's cell # 19876543210.  Steve's is +12345678900
+#define DEST_PHONE_NUMBER "+19876543210" // Update phone numbers here.
 
 #define TINY_GSM_MODEM_SIM7000  //  Purpose:  inform the TinyGSM library which GSM module you are using. This allows the library to tailor its operations, such as AT commands and responses
 #define TINY_GSM_RX_BUFFER 1024 //  Purpose:  determines how much data can be stored temporarily while it is being received from the GSM module.
@@ -27,8 +27,13 @@ TinyGsm modem(debugger);
 TinyGsm modem(SerialAT);
 #endif
 
-#define INPUT_PIN 14               // Check Lilygo
-#define INPUT_PIN_GPIO GPIO_NUM_14 // see line above
+/*
+Note: you can only use pins that are RTC GPIOs with this wake-up source. Here’s a list of the RTC GPIOs for different ESP32 chip models:
+    ESP32-S3: 0-21;
+    ESP32: 0, 2, 4, 12-15, 25-27, 32-39;
+    ESP32-S2: 0-21;
+*/
+#define INPUT_PIN GPIO_NUM_14
 
 // How frequently do we want to send an SMS message?
 //#define SMS_DAILY_SEND_INTERVAL 22 * (60 * 60) // 22 hours in seconds
@@ -37,7 +42,7 @@ TinyGsm modem(SerialAT);
 // Set to 5 minutes for testing purposes
  #define SMS_DAILY_SEND_INTERVAL (5 * 60l) // 5 minutes in seconds
 
-// Steve - August 8 - added modem definitions
+// Modem communication definitions
 #define UART_BAUD 9600 //  Baud rate dencreased from 115200 to 9600. This is for the SIM part only.
 #define PIN_DTR 25     //
 #define PIN_TX 27      //  Communication out
@@ -63,7 +68,18 @@ volatile RTC_DATA_ATTR float extra_sensor_values[NUM_EXTRA_SENSORS * NUM_EXTRA_S
 
 volatile RTC_DATA_ATTR int64_t last_time_drift_val_s = 0; // Time drift in seconds at the last check
 
-// Aug 29
+// Extra Sensors: DHT11 / DHT22
+#include "DHT.h"
+#define DHTPIN 32      // Digital pin connected to the DHT sensor
+
+// NOTE: Uncomment the correct line for the DHT sensor you are using.
+#define DHTTYPE DHT11  // DHT 11
+//#define DHTTYPE DHT22  // DHT 22  (AM2302), AM2321
+//#define DHTTYPE DHT21  // DHT 21 (AM2301)
+
+DHT dht(DHTPIN, DHTTYPE);
+
+
 uint32_t tStamp = 0;
 
 // The current value of the input pin
@@ -95,6 +111,7 @@ void setup()
   delay(1000); // TODO: Shouldn't have too many unnecessary delays. Figure out how many of these are actually needed.
 
   Serial.println("setup()");
+  Serial.println("  Reading from pin " + String(INPUT_PIN));
   Serial.println("  Boot number: " + String(bootCount));
 
   // Configure the ADC
@@ -584,15 +601,19 @@ void doSendSMS()
 }
 
 void doReadExtraSensors(int sensorReadIndex) {
-  // TODO: Read the extra sensors here (such as temperature, humidity, etc)
+  // Read the extra sensors here (such as temperature, humidity, etc)
 
-  // TODO: Read these values for real
-  float sensorVal1 = 42.35;
-  float sensorVal2 = 69.42;
+  // Read humidity
+  float humidity = dht.readHumidity();
+  // Read temperature as Celsius (the default)
+  float temp_c = dht.readTemperature();
+
+  // Print sensor readings (to 2 decimal places)
+  Serial.println("  Humidity: " + String(humidity, 2) + "%, Temp: " + String(temp_c, 2) + "°C");
 
   // Store the sensor values in the array
-  extra_sensor_values[sensorReadIndex * NUM_EXTRA_SENSORS] = sensorVal1;
-  extra_sensor_values[sensorReadIndex * NUM_EXTRA_SENSORS + 1] = sensorVal2;
+  extra_sensor_values[sensorReadIndex * NUM_EXTRA_SENSORS] = humidity;
+  extra_sensor_values[sensorReadIndex * NUM_EXTRA_SENSORS + 1] = temp_c;
 }
 
 void doTimeChecks() {
@@ -709,7 +730,7 @@ void doDeepSleep(time_t nextWakeTime)
   }
 
   // Configure the deep sleep wakeup
-  esp_sleep_enable_ext0_wakeup(INPUT_PIN_GPIO, triggerOnEdge);
+  esp_sleep_enable_ext0_wakeup(INPUT_PIN, triggerOnEdge);
 
   //  Configure the deep sleep timer
   esp_sleep_enable_timer_wakeup(seconds_until_wakeup * 1000000ull);
