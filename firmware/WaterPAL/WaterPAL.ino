@@ -2,7 +2,7 @@
 // Copyright (c) 2024 Clint Herron and Stephen Peacock
 // MIT License
 
-#define DEST_PHONE_NUMBER "+19876543210" // Update phone numbers here.
+#define DEST_PHONE_NUMBER "+1987654321" // Update phone numbers here.
 
 #define TINY_GSM_MODEM_SIM7000  //  Purpose:  inform the TinyGSM library which GSM module you are using. This allows the library to tailor its operations, such as AT commands and responses
 #define TINY_GSM_RX_BUFFER 1024 //  Purpose:  determines how much data can be stored temporarily while it is being received from the GSM module.
@@ -57,6 +57,10 @@ volatile RTC_DATA_ATTR int64_t last_rising_edge_time_s = 0;  // Seconds since ep
 volatile RTC_DATA_ATTR int64_t last_sms_send_time_s = 0;         // Seconds since epoch of the last SMS send time
 volatile RTC_DATA_ATTR int64_t last_extra_sensor_read_time_s = 0;// Seconds since epoch of the last extra sensor read
 
+volatile RTC_DATA_ATTR int last_batt_val_charging;
+volatile RTC_DATA_ATTR int last_batt_val_percentage;
+volatile RTC_DATA_ATTR int last_batt_val_voltage_mV;
+
 #define NUM_EXTRA_SENSORS 2
 #define NUM_EXTRA_SENSOR_READS_PER_DAY 24
 
@@ -86,6 +90,9 @@ int input_pin_value = 0;
 float lat;
 float lon;
 
+#include "waterpal_error_logging.h"
+#include "waterpal_modem.h"
+
 // Function prototypes
 void doTimeChecks();
 void doDeepSleep(time_t nextWakeTime);
@@ -94,29 +101,28 @@ void doLogRisingEdge();
 void doLogFallingEdge();
 void doSendSMS();
 
+#define GET_LOCALTIME_NOW struct timeval tv; gettimeofday(&tv, NULL); time_t now = tv.tv_sec; struct tm timeinfo; localtime_r(&now, &timeinfo);
+
 // Part 1 is choosing what triggered the wakeup cycle, then drop to specific case
 void setup()
 {
   // Configure the input pin with a pulldown resistor
-  pinMode(INPUT_PIN, INPUT); //  Steve - Aug 7 - pullup two x 10k resistor added, which also drains while switch is closed.  removed aug 8 , INPUT_PULLUP, left input, input
+  pinMode(INPUT_PIN, INPUT); // Steve - Aug 7 - pullup two x 10k resistor added, which also drains while switch is closed.
+  // TODO: Audit potentially unnecessary delays
   delay(100);                // Steve - Aug 7 - added 1/10 second delay
 
   bootCount++;
 
   Serial.begin(115200); // Serial port baud rate
 
-  delay(1000); // TODO: Shouldn't have too many unnecessary delays. Figure out how many of these are actually needed.
+  // TODO: Audit potentially unnecessary delays
+  delay(1000);
 
   Serial.println("setup()");
   Serial.println("  Reading from pin " + String(INPUT_PIN));
   Serial.println("  Boot number: " + String(bootCount));
 
-  // Configure the ADC
-  // adc1_config_width(ADC_WIDTH_BIT_12);
-  // adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_0);
-  // adc1_config_channel_atten(ADC1_CHANNEL_3, ADC_ATTEN_DB_0);
-
-  // Arduino code to read from inputPin X times and debounce by taking the majority reading from X readings with a 50ms delay in between each read.
+  // Read from inputPin X times and debounce by taking the majority reading from X readings with a 50ms delay in between each read.
   int totalReading = 0; // start with no count
   int NUM_READS = 5;    // count X times, should always be an odd number.
 
@@ -165,7 +171,6 @@ void setup()
   else if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER)
   {
     Serial.println("  Waking up from timer");
-  // TODO: Add support to log other sensors on our regular wakeup timer check. I.E., log humidity / temperature / tower signal quality every 30 - 60 minutes, but only package up data and send as an SMS once per day.
   }
 
   // Even if we woke up for a rising edge, we should still check to see if it's time to send an SMS.
@@ -175,28 +180,12 @@ void setup()
 }
 
 void printLocalTime(){
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  time_t now = tv.tv_sec;
-  struct tm timeinfo;
-  localtime_r(&now, &timeinfo);
+  GET_LOCALTIME_NOW; // populate `now` and `timeinfo`
 
   Serial.print(">> Current system time: ");
   Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
   Serial.println();
 }
-
-// AT+CLTS Get Local Timestamp
-// NOTE: Not sure if needed, but may add it later if AT+CCLK? is not sufficient.
-/*
-int8_t getLocalTimestampUTC() {
-  modem.sendAT("+CLTS?");
-  if (modem.waitResponse("+CSQ:") != 1) { return 99; }
-  int8_t res = modem.streamGetIntBefore(',');
-  modem.waitResponse();
-  return res;
-}
-*/
 
 bool parseTimestamp(const String& timestamp, struct tm& timeinfo, int16_t& quarterHourOffset) {
     int year, month, day, hour, minute, second;
@@ -282,13 +271,17 @@ int8_t setLocalTimeFromCCLK() {
 
   int8_t res = modem.waitResponse(); // Clear the OK
 
-  // # Clock Drift Calculation
-  // Calculate the offset between the modem's time and the original system time
-  int64_t time_diff_s = tv_new.tv_sec - tv_orig.tv_sec;
+  // Only calculate drift if this is not our first time waking up
+  if (bootCount > 1) {
+    // Calculate the offset between the modem's time and the original system time
+    int64_t time_diff_s = tv_new.tv_sec - tv_orig.tv_sec;
 
-  Serial.println(">> TIME DRIFT: Drift between modem and system time: " + String(time_diff_s) + " seconds");
+    Serial.println(">> TIME DRIFT: Drift between modem and system time: " + String(time_diff_s) + " seconds");
 
-  last_time_drift_val_s = time_diff_s;
+    last_time_drift_val_s = time_diff_s;
+  } else {
+    Serial.println(">> TIME DRIFT: First time setting time from modem -- no drift calculation needed.");
+  }
 
   return res;
 }
@@ -320,12 +313,12 @@ void doFirstTimeInitialization()
   modem.sendAT("+CNMI=1,2,0,0,0"); //    Enable new SMS message indications.  Buffer / storage or not?
   if (SerialAT.available())
   { // Listen for incoming SMS messages
+    // TODO: I don't think we need to look for SMS messages here, since we shouldn't be able to receive them...? - CH, 2024-11-13
     String sms = SerialAT.readString();
-    Serial.println("Response: " + sms);
+    Serial.println("SMS Received: " + sms);
   }
 
   // There are two ways to initialize the modem -- restart, or simple init.
-  //
   if (true) {
     Serial.println("Initializing modem via restart..."); // Start modem on next line
     if (!modem.restart())
@@ -345,7 +338,6 @@ void doFirstTimeInitialization()
   }
 
   // RF antenna should be started by now
-
   Serial.println("Println: Your boot count start number is: " + String(bootCount));
 
   // Texts to send on initialization loop:
@@ -358,17 +350,14 @@ void doFirstTimeInitialization()
     Serial.println("Counter send successful");
   }
 
-  // This section checks battery level.  See page 58 of SIM manual.  Output from CBC is (battery charging on or off 0,1,2),(percentage capacity),(voltage in mV)
-  // NOTE: This does not work if plugged into USB power, so need to connect to (unpowered) FTDI serial port monitor to actually test this.
-  // TODO: Probably should wrap this in its own function at some point.
-  modem.sendAT("+CBC");                              //    Check battery level.  This line sends the AT request to modem
-  modem.waitResponse("+CBC: ");                      //    Wait for response from modem
-  String battLoop = modem.stream.readStringUntil('\n');
-  battLoop.trim();
-  modem.waitResponse();
-  Serial.println("Batt Volt = '" + String(battLoop) + "'");
+  Serial.println("Reading battery level...");
+  batteryInfo last_batt_val = modem_get_batt_val(); //  Get battery value from modem
+  last_batt_val_charging = last_batt_val.charging;
+  last_batt_val_percentage = last_batt_val.percentage;
+  last_batt_val_voltage_mV = last_batt_val.voltage_mV;
+  Serial.println( "Battery level: charge status: " + String(last_batt_val_charging) + " percentage: " + String(last_batt_val_percentage) + " mV: " + String(last_batt_val_voltage_mV));
 
-  modem.sendSMS(DEST_PHONE_NUMBER, String("Battery level: charge status,capacity,voltage: " + battLoop)); // send cell tower strength to text
+  modem.sendSMS(DEST_PHONE_NUMBER, "Battery level: charge status:" + String(last_batt_val_charging) + " percentage: " + String(last_batt_val_percentage) + " mV: " + String(last_batt_val_voltage_mV)); // send cell tower strength to text
   if (modem.waitResponse(10000L) != 1)
   { // ping tower for ten seconds
     DBG("Battery level send failed");
@@ -500,13 +489,9 @@ void doLogRisingEdge()
   Serial.println("doLogRisingEdge()");
 
   // Log the current time of the rising edge, and go back into deep sleep.
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  time_t now = tv.tv_sec;
-  struct tm timeinfo;
-  localtime_r(&now, &timeinfo);
+  GET_LOCALTIME_NOW; // populate now and timeinfo
 
-  last_rising_edge_time_s = tv.tv_sec;
+  last_rising_edge_time_s = now;
 
   Serial.println("  Rising edge detected at " + String(timeinfo.tm_hour) + ":" + String(timeinfo.tm_min) + ":" + String(timeinfo.tm_sec));
 }
@@ -515,11 +500,7 @@ void doLogFallingEdge()
 {
   Serial.println("doLogFallingEdge()");
   // Log the current time of the falling edge, calculate the time span between the rising and falling edges, and add that time span to our day's total accumulation. Then go back into deep sleep.
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  time_t now = tv.tv_sec;
-  struct tm timeinfo;
-  localtime_r(&now, &timeinfo); // check time now
+  GET_LOCALTIME_NOW; // populate now and timeinfo
 
   if (last_rising_edge_time_s == 0)
   { //  only zero if falling edge
@@ -558,11 +539,7 @@ void doSendSMS()
 {
   Serial.println("doSendSMS()");
   // Send a text message (to a configured number) with the the previous day's cumulative water usage time. If the message is sent successfully, then clear the cumulative amount and go back to sleep for another 24 hrs.
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  time_t now = tv.tv_sec;
-  struct tm timeinfo;
-  localtime_r(&now, &timeinfo);
+  GET_LOCALTIME_NOW; // populate now and timeinfo
 
   // TODO: Power up the modem (take it out of airplane / low-power mode, or whatever's needed)
 
@@ -591,7 +568,7 @@ void doSendSMS()
   }
   else
   {
-    Serial.println("SMS failed to send");
+    logError(ERROR_SMS_FAIL); // , "SMS failed to send");
   }
 
   // TODO: Power down the modem, or put it back into low-power mode
@@ -615,11 +592,7 @@ void doReadExtraSensors(int sensorReadIndex) {
 
 void doTimeChecks() {
   // Get the current system time
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  time_t now = tv.tv_sec;
-  struct tm timeinfo;
-  localtime_r(&now, &timeinfo);
+  GET_LOCALTIME_NOW; // populate now and timeinfo
 
   Serial.println("doTimeChecks()");
   Serial.println("  Current time of day: " + String(timeinfo.tm_hour) + ":" + String(timeinfo.tm_min) + ":" + String(timeinfo.tm_sec) + " (" + String(now) + ")");
@@ -699,11 +672,7 @@ void doDeepSleep(time_t nextWakeTime)
   // Set wake conditions of the device to be either the target SMS send time or a rising edge on the water sensor input pin -- whichever comes first.
 
   // Calculate the time until the next wakeup time. Get current RTC time via gettimeofday()
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  time_t now = tv.tv_sec;
-  struct tm timeinfo;
-  localtime_r(&now, &timeinfo);
+  GET_LOCALTIME_NOW; // populate `now` and `timeinfo`
 
   // Calculate the time until the next wakeup
   time_t seconds_until_wakeup = nextWakeTime - now;
