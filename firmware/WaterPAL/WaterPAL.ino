@@ -98,7 +98,6 @@ void setup()
 {
   // Configure the input pin with a pulldown resistor
   pinMode(INPUT_PIN, INPUT); // Steve - Aug 7 - pullup two x 10k resistor added, which also drains while switch is closed.
-  // TODO: Audit potentially unnecessary delays
 
   bootCount++;
 
@@ -407,7 +406,14 @@ void doFirstTimeInitialization()
   modem.enableGPS();
 
   float lat, lon; //  Check float has more than two decimal places in SMS?
-  while (1)
+
+  struct timeval gps_start;
+  gettimeofday(&gps_start, NULL);
+  struct timeval gps_now = gps_start;
+
+  #define GPS_TIMEOUT_S 60
+
+  while (gps_now.tv_sec - gps_start.tv_sec < GPS_TIMEOUT_S)
   {
     if (modem.getGPS(&lat, &lon))
     {
@@ -419,8 +425,10 @@ void doFirstTimeInitialization()
       Serial.print("getGPS failed. Is your antenna plugged in? Time: ");
       Serial.println(millis());
     }
+    gettimeofday(&gps_now, NULL);
     delay(2000);
   }
+
   modem.disableGPS();
 
   // Set Modem GPS Power Control Pin to LOW ,turn off GPS power
