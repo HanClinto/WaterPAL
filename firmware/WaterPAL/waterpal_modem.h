@@ -11,6 +11,33 @@
 // Starting up the modem
 // Powering down the modem
 
+bool modem_init(bool full_restart = true)
+{
+  bool success = false;
+  // There are two ways to initialize the modem -- restart, or simple init.
+  if (full_restart) {
+    Serial.println("Initializing modem via restart..."); // Start modem on next line
+    if (!modem.restart())
+    { //  Command to start modem, see extended notes tab
+      Serial.println("Failed to restart modem, attempting to continue without restarting");
+    } else {
+      Serial.println("Modem restarted");
+      success = true;
+    }
+  } else {
+    Serial.println("Initializing modem via initialize..."); // Start modem on next line
+    if (!modem.init())
+    { //  Command to start modem, see extended notes tab
+      Serial.println("Failed to init modem, attempting to continue...");
+    } else {
+      Serial.println("Modem initialized");
+      success = true;
+    }
+  }
+
+  return success;
+}
+
 typedef struct batteryInfo
 {
   int charging;

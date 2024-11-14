@@ -99,14 +99,16 @@ void setup()
   // Configure the input pin with a pulldown resistor
   pinMode(INPUT_PIN, INPUT); // Steve - Aug 7 - pullup two x 10k resistor added, which also drains while switch is closed.
   // TODO: Audit potentially unnecessary delays
-  delay(100);                // Steve - Aug 7 - added 1/10 second delay
 
   bootCount++;
 
   Serial.begin(115200); // Serial port baud rate
 
-  // TODO: Audit potentially unnecessary delays
-  delay(1000);
+  if (bootCount == 1)
+  {
+    // If this is the first time booting up, then we need to wait a bit for the serial port to initialize
+    delay(1000);
+  }
 
   Serial.println("setup()");
   Serial.println("  Reading from pin " + String(INPUT_PIN));
@@ -308,24 +310,7 @@ void doFirstTimeInitialization()
     Serial.println("SMS Received: " + sms);
   }
 
-  // There are two ways to initialize the modem -- restart, or simple init.
-  if (true) {
-    Serial.println("Initializing modem via restart..."); // Start modem on next line
-    if (!modem.restart())
-    { //  Command to start modem, see extended notes tab
-      Serial.println("Failed to restart modem, attempting to continue without restarting");
-    } else {
-      Serial.println("Modem restarted");
-    }
-  } else {
-    Serial.println("Initializing modem via initialize..."); // Start modem on next line
-    if (!modem.init())
-    { //  Command to start modem, see extended notes tab
-      Serial.println("Failed to init modem, attempting to continue...");
-    } else {
-      Serial.println("Modem initialized");
-    }
-  }
+  bool init_success = modem_init();
 
   // RF antenna should be started by now
   Serial.println("Println: Your boot count start number is: " + String(bootCount));
@@ -347,7 +332,7 @@ void doFirstTimeInitialization()
   last_batt_val_voltage_mV = last_batt_val.voltage_mV;
   Serial.println( "Battery level: charge status: " + String(last_batt_val_charging) + " percentage: " + String(last_batt_val_percentage) + " mV: " + String(last_batt_val_voltage_mV));
 
-  modem.sendSMS(DEST_PHONE_NUMBER, "Battery level: charge status:" + String(last_batt_val_charging) + " percentage: " + String(last_batt_val_percentage) + " mV: " + String(last_batt_val_voltage_mV)); // send cell tower strength to text
+  modem.sendSMS(DEST_PHONE_NUMBER, "Battery level: charge status: " + String(last_batt_val_charging) + " percentage: " + String(last_batt_val_percentage) + " mV: " + String(last_batt_val_voltage_mV)); // send cell tower strength to text
   if (modem.waitResponse(10000L) != 1)
   { // ping tower for ten seconds
     DBG("Battery level send failed");
