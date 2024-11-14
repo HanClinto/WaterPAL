@@ -72,17 +72,6 @@ volatile RTC_DATA_ATTR float extra_sensor_values[NUM_EXTRA_SENSORS * NUM_EXTRA_S
 
 volatile RTC_DATA_ATTR int64_t last_time_drift_val_s = 0; // Time drift in seconds at the last check
 
-// Extra Sensors: DHT11 / DHT22
-#include "DHT.h"
-#define DHTPIN 32      // Digital pin connected to the DHT sensor
-
-// NOTE: Uncomment the correct line for the DHT sensor you are using.
-#define DHTTYPE DHT11  // DHT 11
-//#define DHTTYPE DHT22  // DHT 22  (AM2302), AM2321
-//#define DHTTYPE DHT21  // DHT 21 (AM2301)
-
-DHT dht(DHTPIN, DHTTYPE);
-
 // The current value of the input pin
 int input_pin_value = 0;
 
@@ -92,6 +81,7 @@ float lon;
 
 #include "waterpal_error_logging.h"
 #include "waterpal_modem.h"
+#include "waterpal_sensors.h"
 
 // Function prototypes
 void doTimeChecks();
@@ -578,9 +568,9 @@ void doReadExtraSensors(int sensorReadIndex) {
   // Read the extra sensors here (such as temperature, humidity, etc)
 
   // Read humidity
-  float humidity = dht.readHumidity();
+  float humidity = sensors_read_humidity();
   // Read temperature as Celsius (the default)
-  float temp_c = dht.readTemperature();
+  float temp_c = sensors_read_temp_c();
 
   // Print sensor readings (to 2 decimal places)
   Serial.println("  Humidity: " + String(humidity, 2) + "%, Temp: " + String(temp_c, 2) + "°C");
