@@ -6,7 +6,11 @@ Low cost SMS-based water pump activity logger, built on the ESP32 platform.
 
 # Hardware Platform
 
-Lilygo SIM7000G
+[Lilygo SIM7000G](https://lilygo.cc/products/t-sim7000g)
+
+![image](https://github.com/user-attachments/assets/038007c1-4439-4d9a-b8b0-91e51b35961b)
+
+A low-cost ESP32-based device with integrated cell modem, GPS, solar-panel charger, battery holder, SDcard, etc. Everything we need, and very little that we don't. Flexible sleep options to conserve as much power as possible.
 
 # Program Description
 
