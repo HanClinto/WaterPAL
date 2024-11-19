@@ -47,44 +47,44 @@ On startup, check the wakeup reason.
 Problem: How to configure the devices at runtime for their configuration (update schedule, or even which cell phone number to text to, since we may not want to do international texting depending on the cell plan of the SIM cards that we purchase).
 Possible solution: These devices have an SD Card slot on them. We could compile the application with a default configuration, but we could also support plugging in an SD card that has a small text file with configuration parameters (local SMS target number, GPS on/off, temp/humidity on/off, send frequency, etc) and on first-time boot, the device can check to see if an SD card is present, and read the text file from the SD card (if it's present) and override the default parameters if needed.
 
-[ ] Task: Need to add support for logging temperature / humidity data on regular intervals
+- [ ] Task: Need to add support for logging temperature / humidity data on regular intervals
 
-[x] Task: Need to add support for waking up at regular intervals to log extra data (temp/humidity) as well as send SMS on regular intervals (at least daily, but possibly hourly or even faster for debug purposes).
+- [x] Task: Need to add support for waking up at regular intervals to log extra data (temp/humidity) as well as send SMS on regular intervals (at least daily, but possibly hourly or even faster for debug purposes).
 
-[x] Task: Need to enable flexible configuration for the device to wake up and send an SMS every X minutes, every X hours, etc, and actually wake the device up at those times.
+- [x] Task: Need to enable flexible configuration for the device to wake up and send an SMS every X minutes, every X hours, etc, and actually wake the device up at those times.
 
-[ ] Task: Add a grace period so that if we're too close to waking up again, just do that action.
+- [ ] Task: Add a grace period so that if we're too close to waking up again, just do that action.
 
-[ ] Task: Need to build the IoT message receiver to collect SMS messages and collate data.
+- [ ] Task: Need to build the IoT message receiver to collect SMS messages and collate data.
 
-[ ] Task: Integrate with WhatsApp for business if possible.
+- [ ] Task: Integrate with WhatsApp for business if possible.
 
-[ ] Task: Would be good to have a unique QR code printed on each device that will let people scan it and view a webpage with usage data for this particular pump, as well as send feedback / report problems / ask questions about it.
+- [ ] Task: Would be good to have a unique QR code printed on each device that will let people scan it and view a webpage with usage data for this particular pump, as well as send feedback / report problems / ask questions about it.
 
-[ ] Task: Need to add support for GPS data logging and sending.
+- [ ] Task: Need to add support for GPS data logging and sending.
 
-[ ] Task: Need to add support for battery voltage monitoring and sending.
+- [ ] Task: Need to add support for battery voltage monitoring and sending.
 
-[ ] Task: Need to add support for solar panel voltage monitoring and sending.
+- [ ] Task: Need to add support for solar panel voltage monitoring and sending.
 
-[ ] Task: Need to add support for solar panel current monitoring and sending.
+- [ ] Task: Need to add support for solar panel current monitoring and sending.
 
-[ ] Task: Audit power consumption of the device and see if we can reduce it further.
+- [ ] Task: Audit power consumption of the device and see if we can reduce it further.
 
-[ ] Task: Audit time / profile functions and ensure that we don't have unnecessary sleeps or delays in the code.
+- [ ] Task: Audit time / profile functions and ensure that we don't have unnecessary sleeps or delays in the code.
 
-[ ] Cleanup: Clean up debug prints and ensure that we have a good logging system in place.
+- [ ] Cleanup: Clean up debug prints and ensure that we have a good logging system in place.
 
-[ ] Task: Save detailed log information to SD card (if present) -- part of above task to improve the logging system overall.
+- [ ] Task: Save detailed log information to SD card (if present) -- part of above task to improve the logging system overall.
 
-[ ] Task: Obtain a unique ID for each device without having to individually program it. Can we get the MAC address of a device without knowing the SIM network information, or possibly some other unique ID?
+- [ ] Task: Obtain a unique ID for each device without having to individually program it. Can we get the MAC address of a device without knowing the SIM network information, or possibly some other unique ID?
 
-[ ] Task: How to tie a unique QR code to each device?
+- [ ] Task: How to tie a unique QR code to each device?
 
-[ ] Task: Device should be resilient to losing power and going through first-time initialization many times.
+- [ ] Task: Device should be resilient to losing power and going through first-time initialization many times.
 
-[ ] Idea: Perhaps use an SD card as the trigger for whether or not a device is in debug-mode.
+- [ ] Idea: Perhaps use an SD card as the trigger for whether or not a device is in debug-mode.
 
-[ ] Task: Add support for multiple phone numbers
+- [ ] Task: Add support for multiple phone numbers
 
-[ ] Task: Possibly read phone number from file saved to SDCard?
+- [ ] Task: Possibly read phone number from file saved to SDCard?
