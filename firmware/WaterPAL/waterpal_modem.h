@@ -87,4 +87,65 @@ int8_t getLocalTimestampUTC() {
 }
 */
 
+int8_t modem_set_local_time_from_cclk() {
+  // Send:
+    // AT+CCLK?
+  // Receive
+    // -> +CCLK: "24/10/08,23:39:49-16"
+    // ->
+    // -> OK
+
+  modem.sendAT("+CCLK?");
+  if (modem.waitResponse("+CCLK:") != 1) { return 0; }
+
+  // Request the current system time so that we can calculate the drift between the modem's time and the system time.
+  struct timeval tv_orig;
+  gettimeofday(&tv_orig, NULL);
+
+  // Receive the timestamp string from the modem
+  String timestamp = SerialAT.readString();
+  timestamp.trim();
+
+  struct tm timeinfo;
+  // Zero-out the struct
+  memset(&timeinfo, 0, sizeof(timeinfo));
+
+  int16_t timezone_quarterHourOffset; // tm struct does not have a space for the timezone offset, so store it in a separate number for now.
+
+  // Note that the timezone offset is in quarter-hour increments, which can handle things like India's 5.5 hour offset.
+  if (!parseTimestamp(timestamp, timeinfo, timezone_quarterHourOffset)) {
+    Serial.println(">>> Failed to parse timestamp: " + timestamp);
+    return 0;
+  }
+
+  // TODO: How to properly use timezone information?
+  //  NOTE: May not be needed if we deal primarily in local time. Important thing is to send SMS messages at 10pm local, so if UTC is not set correctly, that's probably fine.
+  // TODO: How to populate timeinfo.tm_isdst properly?
+  //  NOTE: Most developing countries do not use DST, so we can default to 0 for now.
+
+  // Set the system time
+  time_t t_of_day = mktime(&timeinfo);
+  struct timeval tv_new;
+  tv_new.tv_sec = t_of_day;
+  tv_new.tv_usec = 0;
+  settimeofday(&tv_new, NULL); // Update the RTC with the new time epoch offset.
+
+  int8_t res = modem.waitResponse(); // Clear the OK
+
+  // Only calculate drift if this is not our first time waking up
+  if (bootCount > 1) {
+    // Calculate the offset between the modem's time and the original system time
+    int64_t time_diff_s = tv_new.tv_sec - tv_orig.tv_sec;
+
+    Serial.println(">> TIME DRIFT: Drift between modem and system time: " + String(time_diff_s) + " seconds");
+
+    last_time_drift_val_s = time_diff_s;
+  } else {
+    Serial.println(">> TIME DRIFT: First time setting time from modem -- no drift calculation needed.");
+  }
+
+  return res;
+}
+
+
 #endif // WATERPAL_MODEM_H

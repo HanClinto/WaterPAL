@@ -10,12 +10,12 @@
 #define TINY_GSM_TEST_GPS false //  Use true or false to include or exclude GPS search
 #define GSM_PIN ""              //  NOTE: not sure if needed or not
 
-#define SerialAT Serial1 //  Purpose:  defined and initialized with specific RX and TX pins to communicate with the GSM module.
-#define DUMP_AT_COMMANDS //  Purpose:  you can see every AT command that the TinyGSM library sends to the GSM module, as well as the responses received.
+#define SerialAT Serial1   //  Purpose:  Select hardware serial port for AT commands
+#define DUMP_AT_COMMANDS   //  Purpose:  you can see every AT command that the TinyGSM library sends to the GSM module, as well as the responses received.
 
 #include <TinyGsmClient.h> //  Purpose:  header file in the TinyGSM library, for communicating with various GSM modules. The library provides an abstraction layer that simplifies the process of sending AT commands.
-#include <SPI.h>           //  Purpose:  a header file for the SPI (Serial Peripheral Interface) library in Arduino for communicating to SD cards. SPI devices etc
-#include <Ticker.h>        //  Purpose:   header file for the Ticker library, which is used in Arduino and ESP8266/ESP32 platforms to perform periodic tasks at specified intervals without using delay functions
+#include <SPI.h>           //  Purpose:  header file for the SPI (Serial Peripheral Interface) library in Arduino for communicating to SD cards. SPI devices etc
+#include <Ticker.h>        //  Purpose:  header file for the Ticker library, which is used in Arduino and ESP8266/ESP32 platforms to perform periodic tasks at specified intervals without using delay functions
 
 #include <esp_sleep.h>
 
@@ -40,7 +40,7 @@ Note: you can only use pins that are RTC GPIOs with this wake-up source. Here’
 // Set to 1 hour for testing purposes
 // #define SMS_DAILY_SEND_INTERVAL 1 * (60 * 60) // 1 hour in seconds
 // Set to 5 minutes for testing purposes
- #define SMS_DAILY_SEND_INTERVAL (5 * 60l) // 5 minutes in seconds
+#define SMS_DAILY_SEND_INTERVAL (5 * 60l) // 5 minutes in seconds
 
 // Modem communication definitions
 #define UART_BAUD 9600 //  Baud rate dencreased from 115200 to 9600. This is for the SIM part only.
@@ -75,13 +75,14 @@ volatile RTC_DATA_ATTR int64_t last_time_drift_val_s = 0; // Time drift in secon
 // The current value of the input pin
 int input_pin_value = 0;
 
-//  September 19 - add GPS float for lat/lon
+//  GPS lat/lon
 float lat;
 float lon;
 
 #include "waterpal_error_logging.h"
 #include "waterpal_modem.h"
 #include "waterpal_sensors.h"
+#include "waterpal_clock.h"
 
 // Function prototypes
 void doTimeChecks();
@@ -90,6 +91,7 @@ void doFirstTimeInitialization();
 void doLogRisingEdge();
 void doLogFallingEdge();
 void doSendSMS();
+void printLocalTime();
 
 #define GET_LOCALTIME_NOW struct timeval tv; gettimeofday(&tv, NULL); time_t now = tv.tv_sec; struct tm timeinfo; localtime_r(&now, &timeinfo);
 
@@ -170,113 +172,6 @@ void setup()
   doTimeChecks();
 }
 
-void printLocalTime(){
-  GET_LOCALTIME_NOW; // populate `now` and `timeinfo`
-
-  Serial.print(">> Current system time: ");
-  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
-  Serial.println();
-}
-
-bool parseTimestamp(const String& timestamp, struct tm& timeinfo, int16_t& quarterHourOffset) {
-    int year, month, day, hour, minute, second;
-    char tzSign;
-    int tzOffset;
-
-    Serial.println(">> Parsing timestamp: " + timestamp);
-
-    // Try parsing with different potential formats
-    if (sscanf(timestamp.c_str(), "\"%d/%d/%d,%d:%d:%d%c%d\"",
-               &year, &month, &day, &hour, &minute, &second, &tzSign, &tzOffset) == 8) {
-        // Successfully parsed
-        Serial.println(">> Parsed timestamp with timezone information: " + String(year) + "/" + String(month) + "/" + String(day) + " " + String(hour) + ":" + String(minute) + ":" + String(second) + " " + String(tzSign) + String(tzOffset));
-    } else if (sscanf(timestamp.c_str(), "\"%d/%d/%d,%d:%d:%d\"",
-                      &year, &month, &day, &hour, &minute, &second) == 6) {
-        // Timestamp without timezone information
-        tzSign = '+';
-        tzOffset = 0;
-
-        Serial.println(">> Parsed timestamp WITHOUT timezone information: " + String(year) + "/" + String(month) + "/" + String(day) + " " + String(hour) + ":" + String(minute) + ":" + String(second) + " " + String(tzSign) + String(tzOffset));
-    } else {
-        return false; // Parsing failed
-    }
-
-    // Fill the tm struct
-    timeinfo.tm_year = year + 2000 - 1900;
-    timeinfo.tm_mon = month - 1;
-    timeinfo.tm_mday = day;
-    timeinfo.tm_hour = hour;
-    timeinfo.tm_min = minute;
-    timeinfo.tm_sec = second;
-
-    // Convert timezone offset
-    quarterHourOffset = (tzSign == '-' ? 1 : -1) * tzOffset;
-
-    return true;
-}
-
-int8_t setLocalTimeFromCCLK() {
-  // Send:
-    // AT+CCLK?
-  // Receive
-    // -> +CCLK: "24/10/08,23:39:49-16"
-    // ->
-    // -> OK
-
-  // TODO: Read the local time, then calculate and log the drift if we are in debug mode.
-
-  modem.sendAT("+CCLK?");
-  if (modem.waitResponse("+CCLK:") != 1) { return 0; }
-
-  // Request the current system time so that we can calculate the drift between the modem's time and the system time.
-  struct timeval tv_orig;
-  gettimeofday(&tv_orig, NULL);
-
-  // Receive the timestamp string from the modem
-  String timestamp = SerialAT.readString();
-  timestamp.trim();
-
-  struct tm timeinfo;
-  // Zero-out the struct
-  memset(&timeinfo, 0, sizeof(timeinfo));
-
-  int16_t timezone_quarterHourOffset; // tm struct does not have a space for the timezone offset, so store it in a separate number for now.
-
-  // Note that the timezone offset is in quarter-hour increments, which can handle things like India's 5.5 hour offset.
-  if (!parseTimestamp(timestamp, timeinfo, timezone_quarterHourOffset)) {
-    Serial.println(">>> Failed to parse timestamp: " + timestamp);
-    return 0;
-  }
-
-  // TODO: How to properly use timezone information?
-  //  NOTE: May not be needed if we deal primarily in local time. Important thing is to send SMS messages at 10pm local, so if UTC is not set correctly, that's probably fine.
-  // TODO: How to populate timeinfo.tm_isdst properly?
-  //  NOTE: Most developing countries do not use DST, so we can default to 0 for now.
-
-  // Set the system time
-  time_t t_of_day = mktime(&timeinfo);
-  struct timeval tv_new;
-  tv_new.tv_sec = t_of_day;
-  tv_new.tv_usec = 0;
-  settimeofday(&tv_new, NULL); // Update the RTC with the new time epoch offset.
-
-  int8_t res = modem.waitResponse(); // Clear the OK
-
-  // Only calculate drift if this is not our first time waking up
-  if (bootCount > 1) {
-    // Calculate the offset between the modem's time and the original system time
-    int64_t time_diff_s = tv_new.tv_sec - tv_orig.tv_sec;
-
-    Serial.println(">> TIME DRIFT: Drift between modem and system time: " + String(time_diff_s) + " seconds");
-
-    last_time_drift_val_s = time_diff_s;
-  } else {
-    Serial.println(">> TIME DRIFT: First time setting time from modem -- no drift calculation needed.");
-  }
-
-  return res;
-}
-
 // TODO: Many of the modem functions are growing large enough that we can probably break them out into a supplementary source file soon, so that they don't continue to clutter up the rest of the program flow.
 void doFirstTimeInitialization()
 {
@@ -292,15 +187,17 @@ void doFirstTimeInitialization()
 
   // Start the cell antenna
   pinMode(PWR_PIN, OUTPUT);    // Set power pin to output needed to START modem on power pin 4
-  digitalWrite(PWR_PIN, HIGH); // Set power pin high (on)
-  delay(300);
-  digitalWrite(PWR_PIN, LOW);  // Not sure why it gets toggled off, but all documentation says to do this routine for powerup.
+  digitalWrite(PWR_PIN, HIGH); // Set power pin high (on), which when inverted is low
+  delay(1000);                 // Docs note: "Starting the machine requires at least 1 second of low level, and with a level conversion, the levels are opposite"
+  // NOTE: Some docs say 300ms is sufficient, but we're using 1s to be safe.
+  digitalWrite(PWR_PIN, LOW);  // Set power pin low (off), which when inverted is high
 
   SerialAT.begin(UART_BAUD, SERIAL_8N1, PIN_RX, PIN_TX); // Set conditions for serial port to read and write
 
-  Serial.println("Enabling SMS message indications.");
-
+  // TODO: Not sure if we can receive SMS messages, so we should probably disable this for now.
+  /*
   // TODO: Is +CNMI= needed? It seems like this might be already being sent by the restart code that happens later.
+  Serial.println("Enabling SMS message indications.");
   modem.sendAT("+CNMI=1,2,0,0,0"); //    Enable new SMS message indications.  Buffer / storage or not?
   if (SerialAT.available())
   { // Listen for incoming SMS messages
@@ -308,7 +205,8 @@ void doFirstTimeInitialization()
     String sms = SerialAT.readString();
     Serial.println("SMS Received: " + sms);
   }
-
+  */
+ 
   bool init_success = modem_init();
 
   // RF antenna should be started by now
@@ -316,9 +214,8 @@ void doFirstTimeInitialization()
 
   // Texts to send on initialization loop:
   // Test: modem.sendSMS(DEST_PHONE_NUMBER, String("SMS from doFirstTimeInitialization block"));  //send SMS
-  modem.sendSMS(DEST_PHONE_NUMBER, "SMS: Your boot count start number is: " + String(+bootCount)); // send SMS
-  if (modem.waitResponse(10000L) != 1)
-  { // wait 10 seconds for tower ping
+  if (!modem.sendSMS(DEST_PHONE_NUMBER, "SMS: Your boot count start number is: " + String(+bootCount))) // send SMS
+  {
     Serial.println("Counter send failed");
   } else {
     Serial.println("Counter send successful");
@@ -331,9 +228,8 @@ void doFirstTimeInitialization()
   last_batt_val_voltage_mV = last_batt_val.voltage_mV;
   Serial.println( "Battery level: charge status: " + String(last_batt_val_charging) + " percentage: " + String(last_batt_val_percentage) + " mV: " + String(last_batt_val_voltage_mV));
 
-  modem.sendSMS(DEST_PHONE_NUMBER, "Battery level: charge status: " + String(last_batt_val_charging) + " percentage: " + String(last_batt_val_percentage) + " mV: " + String(last_batt_val_voltage_mV)); // send cell tower strength to text
-  if (modem.waitResponse(10000L) != 1)
-  { // ping tower for ten seconds
+  if (!modem.sendSMS(DEST_PHONE_NUMBER, "Battery level: charge status: " + String(last_batt_val_charging) + " percentage: " + String(last_batt_val_percentage) + " mV: " + String(last_batt_val_voltage_mV))) // send cell tower strength to text
+  {
     DBG("Battery level send failed");
   }
   // End battery check section
@@ -375,16 +271,15 @@ void doFirstTimeInitialization()
   csq = map(csq, 0, 31, 0, 100);
   Serial.println("Signal quality: " + String(csq) + "%");
 
-  modem.sendSMS(DEST_PHONE_NUMBER, String(" SMS: Your signal strength: " + String(csq) + "%"));
-  if (modem.waitResponse(10000L) != 1)
-  { // wait 10 seconds for tower ping
+  if (!modem.sendSMS(DEST_PHONE_NUMBER, String(" SMS: Your signal strength: " + String(csq) + "%")))
+  {
     DBG("Signal strength send failed");
   }
   //   End tower signal strength section
 
   // This section gathers timestamp
   Serial.println("\n---Getting Tower Timestamp---\n");
-  setLocalTimeFromCCLK(); //  Set local time from CCLK
+  modem_setLocalTimeFromCCLK(); //  Set local time from CCLK
 
   // Now get the local time again and print it
   printLocalTime();
@@ -440,11 +335,13 @@ void doFirstTimeInitialization()
   }
 
   //  Send GPS info to SMS target
-  modem.sendSMS(DEST_PHONE_NUMBER, String(" Lat " + String(+lat))); //  Send latitude to text, but more than two decimal places?
-  modem.sendSMS(DEST_PHONE_NUMBER, String(" Lon " + String(+lon))); //  Send longitude to text, but more than two decimal places?
-  if (modem.waitResponse(10000L) != 1)
+  if (!modem.sendSMS(DEST_PHONE_NUMBER, String(" Lat " + String(+lat, 6)))) //  Send six decimal places to SMS
   {
-    DBG("Lat fail");
+    DBG("GPS lat send failed");
+  }
+  if (!modem.sendSMS(DEST_PHONE_NUMBER, String(" Lon " + String(+lon, 6)))) //  Send six decimal places to SMS
+  {
+    DBG("GPS lon send failed");
   }
 
   Serial.println("\n---End of GPRS TEST---\n");
@@ -573,6 +470,7 @@ void doReadExtraSensors(int sensorReadIndex) {
   extra_sensor_values[sensorReadIndex * NUM_EXTRA_SENSORS + 1] = temp_c;
 }
 
+// doTimeChecks() takes care of all time-based housekeeping tasks, such as reading the extra sensors, sending SMS messages, and going back to sleep.
 void doTimeChecks() {
   // Get the current system time
   GET_LOCALTIME_NOW; // populate now and timeinfo
@@ -690,6 +588,14 @@ void doDeepSleep(time_t nextWakeTime)
   // Go to sleep
   Serial.println("  Going to sleep now for " + String(seconds_until_wakeup) + " seconds until next scheduled wake up");
   esp_deep_sleep_start();
+}
+
+void printLocalTime(){
+  GET_LOCALTIME_NOW; // populate `now` and `timeinfo`
+
+  Serial.print(">> Current system time: ");
+  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+  Serial.println();
 }
 
 void loop()
