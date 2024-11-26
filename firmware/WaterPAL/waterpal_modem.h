@@ -87,7 +87,7 @@ int8_t getLocalTimestampUTC() {
 }
 */
 
-int8_t modem_set_local_time_from_cclk() {
+int8_t modem_setLocalTimeFromCCLK() {
   // Send:
     // AT+CCLK?
   // Receive
