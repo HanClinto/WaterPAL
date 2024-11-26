@@ -3,6 +3,7 @@
 
 #include <TinyGsmClient.h> //  Purpose:  header file in the TinyGSM library, for communicating with various GSM modules. The library provides an abstraction layer that simplifies the process of sending AT commands.
 #include "waterpal_error_logging.h"
+#include "waterpal_clock.h"
 
 // These functions are all related to the modem, and are used to interact with it in various ways. They are all part of the firmware for the WaterPAL device, which is designed to monitor water usage and send SMS messages with relevant data. The functions are used to gather information from the modem, send messages, and manage the modem's power state.
 
