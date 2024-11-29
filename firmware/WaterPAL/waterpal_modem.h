@@ -12,8 +12,17 @@
 // Starting up the modem
 // Powering down the modem
 
-bool modem_init(bool full_restart = true)
+bool modem_on(bool full_restart = true)
 {
+  // Start the cell antenna
+  pinMode(PWR_PIN, OUTPUT);    // Set power pin to output needed to START modem on power pin 4
+  digitalWrite(PWR_PIN, HIGH); // Set power pin high (on), which when inverted is low
+  delay(1000);                 // Docs note: "Starting the machine requires at least 1 second of low level, and with a level conversion, the levels are opposite"
+  // NOTE: Some docs say 300ms is sufficient, but we're using 1s to be safe.
+  digitalWrite(PWR_PIN, LOW);  // Set power pin low (off), which when inverted is high
+
+  SerialAT.begin(UART_BAUD, SERIAL_8N1, PIN_RX, PIN_TX); // Set conditions for serial port to read and write
+
   bool success = false;
   // There are two ways to initialize the modem -- restart, or simple init.
   if (full_restart) {
@@ -37,6 +46,20 @@ bool modem_init(bool full_restart = true)
   }
 
   return success;
+}
+
+bool modem_off()
+{
+  // Power down the modem
+  pinMode(PWR_PIN, OUTPUT);    // Set power pin to output needed to START modem on power pin 4
+  digitalWrite(PWR_PIN, HIGH); // Set power pin high (on), which when inverted is low
+  delay(1000);                 // Docs note: "Starting the machine requires at least 1 second of low level, and with a level conversion, the levels are opposite"
+  // NOTE: Some docs say 300ms is sufficient, but we're using 1s to be safe.
+  digitalWrite(PWR_PIN, LOW);  // Set power pin low (off), which when inverted is high
+
+  SerialAT.end(); // End serial port communication
+
+  return true;
 }
 
 typedef struct batteryInfo

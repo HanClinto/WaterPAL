@@ -99,7 +99,7 @@ void printLocalTime();
 void setup()
 {
   // Configure the input pin with a pulldown resistor
-  pinMode(INPUT_PIN, INPUT); // Steve - Aug 7 - pullup two x 10k resistor added, which also drains while switch is closed.
+  pinMode(INPUT_PIN, INPUT_PULLUP); // Steve - Aug 7 - pullup two x 10k resistor added, which also drains while switch is closed.
 
   bootCount++;
 
@@ -185,29 +185,7 @@ void doFirstTimeInitialization()
 
   Serial.println("Powering on cell modem...");
 
-  // Start the cell antenna
-  pinMode(PWR_PIN, OUTPUT);    // Set power pin to output needed to START modem on power pin 4
-  digitalWrite(PWR_PIN, HIGH); // Set power pin high (on), which when inverted is low
-  delay(1000);                 // Docs note: "Starting the machine requires at least 1 second of low level, and with a level conversion, the levels are opposite"
-  // NOTE: Some docs say 300ms is sufficient, but we're using 1s to be safe.
-  digitalWrite(PWR_PIN, LOW);  // Set power pin low (off), which when inverted is high
-
-  SerialAT.begin(UART_BAUD, SERIAL_8N1, PIN_RX, PIN_TX); // Set conditions for serial port to read and write
-
-  // TODO: Not sure if we can receive SMS messages, so we should probably disable this for now.
-  /*
-  // TODO: Is +CNMI= needed? It seems like this might be already being sent by the restart code that happens later.
-  Serial.println("Enabling SMS message indications.");
-  modem.sendAT("+CNMI=1,2,0,0,0"); //    Enable new SMS message indications.  Buffer / storage or not?
-  if (SerialAT.available())
-  { // Listen for incoming SMS messages
-    // TODO: I don't think we need to look for SMS messages here, since we shouldn't be able to receive them...? - CH, 2024-11-13
-    String sms = SerialAT.readString();
-    Serial.println("SMS Received: " + sms);
-  }
-  */
- 
-  bool init_success = modem_init();
+  bool init_success = modem_on();
 
   // RF antenna should be started by now
   Serial.println("Println: Your boot count start number is: " + String(bootCount));
@@ -456,6 +434,7 @@ void doSendSMS()
 
 void doReadExtraSensors(int sensorReadIndex) {
   // Read the extra sensors here (such as temperature, humidity, etc)
+  sensors_setup();
 
   // Read humidity
   float humidity = sensors_read_humidity();
