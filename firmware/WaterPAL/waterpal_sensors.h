@@ -14,6 +14,11 @@
 
 DHT dht(DHTPIN, DHTTYPE);
 
+void sensors_setup()
+{
+    dht.begin();
+}
+
 float sensors_read_humidity()
 {
     return dht.readHumidity();
