@@ -204,13 +204,37 @@ void doExtendedSelfCheck()
 
   #endif // WATERPAL_USE_GPS
 
+  // Get Cell Tower Info
+  String cpsi = modem_get_cpsi();
+  if (cpsi.length() == 0)
+  {
+    logError(ERROR_MODEM_FAIL); //, "Failed to get cell tower info");
+  } else {
+    Serial.println("Cell Tower Info: " + cpsi);
+  }
+
   // Send extended info SMS
   Serial.println("Sending extended info SMS...");
   char buffer[256];
 
-  // Format of the SMS message
-  // 1,1,IMEI,
+  // Format of the extended data SMS message
+  // Header: "1,2,IMEI,"
+  // Body: "lat (5 decimals),lon (5 decimals),cpsi"
   
+  // Format the message
+  snprintf(buffer, sizeof(buffer), "1,2,%s,%f,%f,%s", imei_base64.c_str(), gps_data.lat, gps_data.lon, cpsi.c_str());
+
+  // Send the SMS
+  bool sms_res = modem_broadcast_sms(buffer);
+
+  if (sms_res)
+  {
+    Serial.println("Extended data SMS sent successfully");
+  }
+  else
+  {
+    logError(ERROR_SMS_FAIL); // , "Failed to send SMS message");
+  }
 
 }
 /*

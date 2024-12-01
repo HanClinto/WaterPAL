@@ -114,6 +114,44 @@ batteryInfo modem_get_batt_val()
   return battInfo;
 }
 
+int8_t modem_get_signal_quality()
+{
+  Serial.println("\n---Getting Signal Quality---\n");
+
+  // Read tower signal strength
+  int csq = modem.getSignalQuality();
+  if (csq == 99) {
+    Serial.println(">> Failed to get signal quality");
+    csq = 0;
+  }
+  // getSignalQuality returns 99 if it fails, or 0-31 if it succeeds, so we check for failure and map return values to percentage from 0-100.
+  csq = map(csq, 0, 31, 0, 100);
+  Serial.println("Signal quality: " + String(csq) + "%");
+
+  return csq;
+}
+
+String modem_get_cpsi()
+{
+  String cpsi;
+  modem.sendAT("+CPSI?"); //  test cell provider info
+  if (modem.waitResponse("+CPSI: ") == 1)
+  {
+    cpsi = modem.stream.readStringUntil('\n');
+    cpsi.trim();
+    modem.waitResponse();
+    Serial.println(">> The current network parameters are: '" + cpsi + "'");
+  } else {
+    Serial.println(">> No network parameters found");
+  }
+
+  return cpsi;
+}
+
+// **********
+// IMEI Functions
+// **********
+
 int64_t _str_to_int64(const String& str)
 {
   int64_t val = 0;
@@ -133,6 +171,7 @@ int64_t _str_to_int64(const String& str)
 
 String _int64_to_base64(int64_t val)
 {
+  // Ex: 869951037053562 -> "DFzdCiRp6"
   // Base64 encoding
   const char *b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   String res = "";
@@ -265,8 +304,12 @@ bool modem_broadcast_sms(const String& message)
 {
   bool error = false;
 
+  const int num_phone_numbers = sizeof(WATERPAL_DEST_PHONE_NUMBERS) / sizeof(WATERPAL_DEST_PHONE_NUMBERS[0]);
+
+  Serial.println("Broadcasting SMS message to " + String(num_phone_numbers) + " numbers: '" + message + "'");
+
   // Send the SMS message to all the phone numbers in the list
-  for (int i = 0; i < sizeof(WATERPAL_DEST_PHONE_NUMBERS) / sizeof(WATERPAL_DEST_PHONE_NUMBERS[0]); i++)
+  for (int i = 0; i < num_phone_numbers; i++)
   {
     if (!modem.sendSMS(WATERPAL_DEST_PHONE_NUMBERS[i], message))
     {
@@ -329,6 +372,7 @@ bool modem_get_gps(struct gpsInfo& gps, uint32_t timeout_s = 60)
   struct timeval gps_start;
   gettimeofday(&gps_start, NULL);
   struct timeval gps_now = gps_start;
+  int attempt_cnt = 0;
 
   while (gps_now.tv_sec - gps_start.tv_sec < timeout_s)
   {
@@ -347,12 +391,20 @@ bool modem_get_gps(struct gpsInfo& gps, uint32_t timeout_s = 60)
     }
     else
     {
-      Serial.print("getGPS failed. Is your antenna plugged in? Time: ");
+      Serial.print("getGPS attempt " + String(++attempt_cnt) + " unsuccessful. Is your antenna plugged in? Time: ");
       Serial.println(millis());
     }
     gettimeofday(&gps_now, NULL);
-    // Try again in 2 seconds
-    delay(2000);
+    // Try again later
+    delay(1000);
+  }
+
+  if (!success)
+  {
+    Serial.println("getGPS failed. Is your antenna plugged in?");
+    logError(ERROR_GPS_FAIL); //, "Failed to get GPS data");
+  } else {
+    Serial.println("GPS data received successfully in " + String(gps_now.tv_sec - gps_start.tv_sec) + " seconds");
   }
 
   return success;
