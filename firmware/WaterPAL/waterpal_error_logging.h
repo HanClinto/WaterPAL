@@ -16,6 +16,7 @@ volatile RTC_DATA_ATTR int64_t last_error_time_s = 0; // Time of the last error 
 #define ERROR_SENSOR_FAIL 5
 #define ERROR_WATER_SENSOR_FAIL 6
 #define ERROR_BATTERY_READ 7
+#define ERROR_TIMESTAMP_FAIL 8 // Failed to parse timestamp
 
 String getError()
 {

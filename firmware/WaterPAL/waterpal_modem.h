@@ -12,8 +12,16 @@
 // Starting up the modem
 // Powering down the modem
 
+static bool _modem_is_on = false; // 0 = off, 1 = on
+
 bool modem_on(bool full_restart = true)
 {
+  if (_modem_is_on)
+  {
+    Serial.println("Modem is already on");
+    return true;
+  }
+
   // Start the cell antenna
   pinMode(PWR_PIN, OUTPUT);    // Set power pin to output needed to START modem on power pin 4
   digitalWrite(PWR_PIN, HIGH); // Set power pin high (on), which when inverted is low
@@ -33,6 +41,7 @@ bool modem_on(bool full_restart = true)
     } else {
       Serial.println("Modem restarted");
       success = true;
+      _modem_is_on = true;
     }
   } else {
     Serial.println("Initializing modem via initialize..."); // Start modem on next line
@@ -50,14 +59,20 @@ bool modem_on(bool full_restart = true)
 
 bool modem_off()
 {
+  // Send the shutdown command
+  modem.sendAT("AT+CPOWD=1"); // Power down the modem
+  delay(1000);
+
+  // TODO: Do we want to check for a response here?
+
+  // TODO: Should we sleep the modem instead of turning it off entirely?
   // Power down the modem
   pinMode(PWR_PIN, OUTPUT);    // Set power pin to output needed to START modem on power pin 4
   digitalWrite(PWR_PIN, HIGH); // Set power pin high (on), which when inverted is low
-  delay(1000);                 // Docs note: "Starting the machine requires at least 1 second of low level, and with a level conversion, the levels are opposite"
-  // NOTE: Some docs say 300ms is sufficient, but we're using 1s to be safe.
-  digitalWrite(PWR_PIN, LOW);  // Set power pin low (off), which when inverted is high
 
   SerialAT.end(); // End serial port communication
+
+  _modem_is_on = false;
 
   return true;
 }
@@ -97,6 +112,67 @@ batteryInfo modem_get_batt_val()
   }
 
   return battInfo;
+}
+
+int64_t _str_to_int64(const String& str)
+{
+  int64_t val = 0;
+  for (int i = 0; i < str.length(); i++)
+  {
+    // Check for non-numeric characters
+    if (str[i] < '0' || str[i] > '9')
+    {
+      // Skip over potential hyphens or other non-numeric characters
+      continue;
+    }
+    val = val * 10 + (str[i] - '0');
+  }
+
+  return val;
+}
+
+String _int64_to_base64(int64_t val)
+{
+  // Base64 encoding
+  const char *b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  String res = "";
+  while (val > 0)
+  {
+    res = b64[val & 0x3F] + res;
+    val >>= 6;
+  }
+  return res;
+}
+
+int64_t _base64_to_int64(const String& b64_str)
+{
+  // Base64 decoding
+  const char *b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  int64_t val = 0;
+  for (int i = 0; i < b64_str.length(); i++)
+  {
+    val = val << 6;
+    val += strchr(b64, b64_str[i]) - b64;
+  }
+  return val;
+}
+
+int64_t modem_get_IMEI()
+{
+  // The IMEI is either 15 or 16 digits long, so we need to store it as a string.
+  // "The IMEI (15 decimal digits: 14 digits plus a check digit) or IMEISV (16 decimal digits: 14 digits plus two software version digits) includes information on the origin, model, and serial number of the device."
+  // Ex: "869951037053562"
+  String imei_str = modem.getIMEI();
+
+  Serial.println("IMEI: " + imei_str);
+
+  // Parse the IMEI string into a 64-bit integer
+  return _str_to_int64(imei_str);
+}
+
+String modem_get_IMEI_base64()
+{
+  return _int64_to_base64(modem_get_IMEI());
 }
 
 // AT+CLTS Get Local Timestamp
@@ -139,6 +215,7 @@ int8_t modem_setLocalTimeFromCCLK() {
   // Note that the timezone offset is in quarter-hour increments, which can handle things like India's 5.5 hour offset.
   if (!parseTimestamp(timestamp, timeinfo, timezone_quarterHourOffset)) {
     Serial.println(">>> Failed to parse timestamp: " + timestamp);
+    logError(ERROR_TIMESTAMP_FAIL); //, "Failed to parse timestamp");
     return 0;
   }
 
@@ -169,6 +246,131 @@ int8_t modem_setLocalTimeFromCCLK() {
   }
 
   return res;
+}
+
+// **********
+// SMS Functions
+// **********
+
+// SMS packets have a header and a body.
+
+// Header:
+//  Version (integer, 1 byte)
+//  Packet type (integer, 1 byte)
+//  SMS Index (integer, 4 bytes)
+//  Identity (IMEI, base64 encoded, 
+
+
+bool modem_broadcast_sms(const String& message)
+{
+  bool error = false;
+
+  // Send the SMS message to all the phone numbers in the list
+  for (int i = 0; i < sizeof(WATERPAL_DEST_PHONE_NUMBERS) / sizeof(WATERPAL_DEST_PHONE_NUMBERS[0]); i++)
+  {
+    if (!modem.sendSMS(WATERPAL_DEST_PHONE_NUMBERS[i], message))
+    {
+      logError(ERROR_SMS_FAIL); //, "Failed to send SMS message");
+      error = true;
+    }
+  }
+
+  return !error;
+}
+
+bool modem_broadcast_sms_sprintf(const char* format, ...)
+{
+  char buffer[256];
+  va_list args;
+  va_start(args, format);
+  vsnprintf(buffer, sizeof(buffer), format, args);
+  va_end(args);
+
+  return modem_broadcast_sms(buffer);
+}
+
+// **********
+// GPS Functions
+// **********
+
+bool modem_gps_on()
+{
+  // Set Modem GPS Power Control Pin to HIGH ,turn on GPS power
+  // Only in version 20200415 is there a function to control GPS power
+  modem.sendAT("+CGPIO=0,48,1,1");
+  if (modem.waitResponse(10000L) != 1)
+  {
+    logError(ERROR_GPS_FAIL); //, "Failed to turn on GPS");
+  }
+
+  Serial.println("\nEnabling GPS...\n");
+
+  return modem.enableGPS();
+}
+
+struct gpsInfo
+{
+  float lat;
+  float lon;
+  // Time info
+  int year;
+  int month;
+  int day;
+  int hour;
+  int minute;
+  int second;
+};
+
+// Get GPS info (with optional timeout, default to 60 seconds)
+bool modem_get_gps(struct gpsInfo& gps, uint32_t timeout_s = 60)
+{
+  bool success = false;
+
+  struct timeval gps_start;
+  gettimeofday(&gps_start, NULL);
+  struct timeval gps_now = gps_start;
+
+  while (gps_now.tv_sec - gps_start.tv_sec < timeout_s)
+  {
+    if (modem.getGPS(&gps.lat, &gps.lon, 
+                     0, 0, 0, 0, 0,
+                     &gps.year, &gps.month, &gps.day,
+                     &gps.hour, &gps.minute, &gps.second))
+    {
+      success = true;
+
+      // TODO: Should we use this to set the system time?
+      //  Note that this is the UTC time, so we would need to adjust for the local timezone.
+      //  The cell tower gives us the local time (with timezone info), so it may be better for setting the time of the device.
+      //  Even so, it would be good to have the GPS time as a backup, and to check for drift / compare accuracy.
+      break;
+    }
+    else
+    {
+      Serial.print("getGPS failed. Is your antenna plugged in? Time: ");
+      Serial.println(millis());
+    }
+    gettimeofday(&gps_now, NULL);
+    // Try again in 2 seconds
+    delay(2000);
+  }
+
+  return success;
+}
+
+bool modem_gps_off()
+{
+  bool success = modem.disableGPS();
+
+  // Set Modem GPS Power Control Pin to LOW ,turn off GPS power
+  // Only in version 20200415 is there a function to control GPS power
+  modem.sendAT("+CGPIO=0,48,1,0");
+  if (modem.waitResponse(10000L) != 1)
+  {
+    DBG("Set GPS Power LOW Failed");
+  }
+
+  return success;
 }
 
 

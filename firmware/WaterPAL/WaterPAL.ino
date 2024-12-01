@@ -2,12 +2,9 @@
 // Copyright (c) 2024 Clint Herron and Stephen Peacock
 // MIT License
 
-#define DEST_PHONE_NUMBER "+1987654321" // Update phone numbers here.
-
 #define TINY_GSM_MODEM_SIM7000  //  Purpose:  inform the TinyGSM library which GSM module you are using. This allows the library to tailor its operations, such as AT commands and responses
 #define TINY_GSM_RX_BUFFER 1024 //  Purpose:  determines how much data can be stored temporarily while it is being received from the GSM module.
 
-#define TINY_GSM_TEST_GPS false //  Use true or false to include or exclude GPS search
 #define GSM_PIN ""              //  NOTE: not sure if needed or not
 
 #define SerialAT Serial1   //  Purpose:  Select hardware serial port for AT commands
@@ -18,6 +15,7 @@
 #include <Ticker.h>        //  Purpose:  header file for the Ticker library, which is used in Arduino and ESP8266/ESP32 platforms to perform periodic tasks at specified intervals without using delay functions
 
 #include <esp_sleep.h>
+#include "waterpal_config.h"
 
 #ifdef DUMP_AT_COMMANDS                    //  NOTE: If enabled it requires the streamDebugger library
 #include <StreamDebugger.h>                //  Purpose:  to check data streams back and forth
@@ -27,20 +25,6 @@ TinyGsm modem(debugger);
 TinyGsm modem(SerialAT);
 #endif
 
-/*
-Note: you can only use pins that are RTC GPIOs with this wake-up source. Here’s a list of the RTC GPIOs for different ESP32 chip models:
-    ESP32-S3: 0-21;
-    ESP32: 0, 2, 4, 12-15, 25-27, 32-39;
-    ESP32-S2: 0-21;
-*/
-#define INPUT_PIN GPIO_NUM_14
-
-// How frequently do we want to send an SMS message?
-//#define SMS_DAILY_SEND_INTERVAL 22 * (60 * 60) // 22 hours in seconds
-// Set to 1 hour for testing purposes
-// #define SMS_DAILY_SEND_INTERVAL 1 * (60 * 60) // 1 hour in seconds
-// Set to 5 minutes for testing purposes
-#define SMS_DAILY_SEND_INTERVAL (5 * 60l) // 5 minutes in seconds
 
 // Modem communication definitions
 #define UART_BAUD 9600 //  Baud rate dencreased from 115200 to 9600. This is for the SIM part only.
@@ -50,9 +34,11 @@ Note: you can only use pins that are RTC GPIOs with this wake-up source. Here’
 #define PWR_PIN 4      //  Power on pin (needs to go high)
 
 // All RTC_DATA_ATTR variables are persisted while the device is in deep sleep
-volatile RTC_DATA_ATTR int bootCount = 0;
+volatile RTC_DATA_ATTR int64_t bootCount = 0;
 volatile RTC_DATA_ATTR int64_t total_water_usage_time_s = 0; // Total time in seconds that the water pump has been in use
 volatile RTC_DATA_ATTR int64_t last_rising_edge_time_s = 0;  // Seconds since epoch of the last rising edge
+
+volatile RTC_DATA_ATTR int64_t total_sms_send_count = 0; // Total number of SMS messages sent
 
 volatile RTC_DATA_ATTR int64_t last_sms_send_time_s = 0;         // Seconds since epoch of the last SMS send time
 volatile RTC_DATA_ATTR int64_t last_extra_sensor_read_time_s = 0;// Seconds since epoch of the last extra sensor read
@@ -61,11 +47,8 @@ volatile RTC_DATA_ATTR int last_batt_val_charging;
 volatile RTC_DATA_ATTR int last_batt_val_percentage;
 volatile RTC_DATA_ATTR int last_batt_val_voltage_mV;
 
-#define NUM_EXTRA_SENSORS 2
-#define NUM_EXTRA_SENSOR_READS_PER_DAY 24
-
 // How frequently do we want to log from peripheral sensors? (temp, humidity, etc)
-#define EXTRA_SENSOR_READ_INTERVAL ((24 * 60 * 60l) / NUM_EXTRA_SENSOR_READS_PER_DAY)
+#define EXTRA_SENSOR_READ_INTERVAL ((24l * 60l * 60l) / NUM_EXTRA_SENSOR_READS_PER_DAY)
 
 // Array to store the last read values from the extra sensors
 volatile RTC_DATA_ATTR float extra_sensor_values[NUM_EXTRA_SENSORS * NUM_EXTRA_SENSOR_READS_PER_DAY];
@@ -87,7 +70,7 @@ float lon;
 // Function prototypes
 void doTimeChecks();
 void doDeepSleep(time_t nextWakeTime);
-void doFirstTimeInitialization();
+//void doFirstTimeInitialization();
 void doLogRisingEdge();
 void doLogFallingEdge();
 void doSendSMS();
@@ -99,7 +82,7 @@ void printLocalTime();
 void setup()
 {
   // Configure the input pin with a pulldown resistor
-  pinMode(INPUT_PIN, INPUT_PULLUP); // Steve - Aug 7 - pullup two x 10k resistor added, which also drains while switch is closed.
+  pinMode(WATERPAL_FLOAT_SWITCH_INPUT_PIN, INPUT_PULLUP); // Steve - Aug 7 - pullup two x 10k resistor added, which also drains while switch is closed.
 
   bootCount++;
 
@@ -112,7 +95,7 @@ void setup()
   }
 
   Serial.println("setup()");
-  Serial.println("  Reading from pin " + String(INPUT_PIN));
+  Serial.println("  Reading from pin " + String(WATERPAL_FLOAT_SWITCH_INPUT_PIN));
   Serial.println("  Boot number: " + String(bootCount));
 
   // Read from inputPin X times and debounce by taking the majority reading from X readings with a 50ms delay in between each read.
@@ -121,7 +104,7 @@ void setup()
 
   for (int cnt = 0; cnt < NUM_READS; cnt++)
   {
-    totalReading += digitalRead(INPUT_PIN); // Accumulate readings from the input pin
+    totalReading += digitalRead(WATERPAL_FLOAT_SWITCH_INPUT_PIN); // Accumulate readings from the input pin
     delay(50);                              // Delay for a bit between each read.
   }
 
@@ -143,9 +126,9 @@ void setup()
   Serial.println("  Wakeup reason: " + String(wakeup_reason));
 
   // If it's powering on for the first time, then do all of our initialization
-  if (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED)
+  if (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED || (total_sms_send_count % 7 == 0))
   {
-    doFirstTimeInitialization();
+    doExtendedSelfCheck();
   }
   else if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0)
   {
@@ -172,6 +155,65 @@ void setup()
   doTimeChecks();
 }
 
+
+// We only do an extended self-check every X boots, to save power.
+void doExtendedSelfCheck()
+{
+  Serial.println("doExtendedSelfCheck()");
+  printLocalTime(); // NOTE: This should print an uninitialized time (1970) until we set the time from the cell tower.
+
+  // Turn on the modem
+  Serial.println("Powering on cell modem...");
+  bool init_success = modem_on();
+
+  // Update system time and check for drift
+  Serial.println("\n---Getting Tower Timestamp---\n");
+  modem_setLocalTimeFromCCLK(); //  Set local time from CCLK
+
+  // Now get the local time again and print it as a check
+  printLocalTime();
+
+  // Check IMEI
+  String imei_base64 = modem_get_IMEI_base64();
+  
+  Serial.print("IMEI (base64 encoded): " + imei_base64 + "\n");
+  int64_t imei = _base64_to_int64(imei_base64);
+  Serial.print("IMEI (decoded): " + String(imei) + "\n");
+
+  // Check GPS (optional)
+  #if WATERPAL_USE_GPS
+
+  // Turn GPS on
+  bool gps_res = modem_gps_on();
+
+  gpsInfo gps_data;
+
+  // Get GPS data, with a timeout of 60 seconds.
+  if (modem_get_gps(gps_data, 60))
+  {
+    Serial.printf("GPS Lat:%f Lon:%f\n", gps_data.lat, gps_data.lon);
+    Serial.printf("GPS Time: %d/%d/%d %d:%d:%d\n", gps_data.year, gps_data.month, gps_data.day, gps_data.hour, gps_data.minute, gps_data.second);
+  }
+  else
+  {
+    logError(ERROR_GPS_FAIL); // , "Failed to get GPS data");
+  }
+
+  // Turn GPS off
+  gps_res = modem_gps_off();
+
+  #endif // WATERPAL_USE_GPS
+
+  // Send extended info SMS
+  Serial.println("Sending extended info SMS...");
+  char buffer[256];
+
+  // Format of the SMS message
+  // 1,1,IMEI,
+  
+
+}
+/*
 // TODO: Many of the modem functions are growing large enough that we can probably break them out into a supplementary source file soon, so that they don't continue to clutter up the rest of the program flow.
 void doFirstTimeInitialization()
 {
@@ -255,16 +297,8 @@ void doFirstTimeInitialization()
   }
   //   End tower signal strength section
 
-  // This section gathers timestamp
-  Serial.println("\n---Getting Tower Timestamp---\n");
-  modem_setLocalTimeFromCCLK(); //  Set local time from CCLK
 
-  // Now get the local time again and print it
-  printLocalTime();
-
-//  End timestamp and cell tower strength section
-
-#if TINY_GSM_TEST_GPS
+#if WATERPAL_USE_GPS
   // TODO: This section loops endlessly if we don't have a GPS antenna connected. Need to add a timeout // fallback.
   Serial.println("\n---Starting GPS TEST---\n");
   // Set Modem GPS Power Control Pin to HIGH ,turn on GPS power
@@ -323,7 +357,7 @@ void doFirstTimeInitialization()
   }
 
   Serial.println("\n---End of GPRS TEST---\n");
-#endif // TINY_GSM_TEST_GPS
+#endif // WATERPAL_USE_GPS
 
   // TODO: Needed delay?
   delay(1000); // delay 1 second before powering antenna down
@@ -341,6 +375,7 @@ void doFirstTimeInitialization()
 
   Serial.println("\n---End of doFirstTimeInitialization()---");
 }
+*/
 
 void doLogRisingEdge()
 {
@@ -556,7 +591,7 @@ void doDeepSleep(time_t nextWakeTime)
   }
 
   // Configure the deep sleep wakeup
-  esp_sleep_enable_ext0_wakeup(INPUT_PIN, triggerOnEdge);
+  esp_sleep_enable_ext0_wakeup(WATERPAL_FLOAT_SWITCH_INPUT_PIN, triggerOnEdge);
 
   //  Configure the deep sleep timer
   esp_sleep_enable_timer_wakeup(seconds_until_wakeup * 1000000ull);
