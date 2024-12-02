@@ -43,16 +43,13 @@ volatile RTC_DATA_ATTR int64_t total_sms_send_count = 0; // Total number of SMS 
 volatile RTC_DATA_ATTR int64_t last_sms_send_time_s = 0;         // Seconds since epoch of the last SMS send time
 volatile RTC_DATA_ATTR int64_t last_extra_sensor_read_time_s = 0;// Seconds since epoch of the last extra sensor read
 
-volatile RTC_DATA_ATTR int last_batt_val_charging;
-volatile RTC_DATA_ATTR int last_batt_val_percentage;
-volatile RTC_DATA_ATTR int last_batt_val_voltage_mV;
 
 // How frequently do we want to log from peripheral sensors? (temp, humidity, etc)
 #define EXTRA_SENSOR_READ_INTERVAL ((24l * 60l * 60l) / NUM_EXTRA_SENSOR_READS_PER_DAY)
 
 // Array to store the last read values from the extra sensors
 volatile RTC_DATA_ATTR float extra_sensor_values[NUM_EXTRA_SENSORS * NUM_EXTRA_SENSOR_READS_PER_DAY];
-
+volatile RTC_DATA_ATTR int extra_sensor_read_count = 0;
 volatile RTC_DATA_ATTR int64_t last_time_drift_val_s = 0; // Time drift in seconds at the last check
 
 // The current value of the input pin
@@ -61,6 +58,8 @@ int input_pin_value = 0;
 //  GPS lat/lon
 float lat;
 float lon;
+
+char sms_buffer[256];
 
 #include "waterpal_error_logging.h"
 #include "waterpal_modem.h"
@@ -75,6 +74,11 @@ void doLogRisingEdge();
 void doLogFallingEdge();
 void doSendSMS();
 void printLocalTime();
+
+void print_extra_sensor_vals();
+float get_extra_sensor_min(int sensor_index);
+float get_extra_sensor_max(int sensor_index);
+float get_extra_sensor_avg(int sensor_index);
 
 #define GET_LOCALTIME_NOW struct timeval tv; gettimeofday(&tv, NULL); time_t now = tv.tv_sec; struct tm timeinfo; localtime_r(&now, &timeinfo);
 
@@ -126,7 +130,7 @@ void setup()
   Serial.println("  Wakeup reason: " + String(wakeup_reason));
 
   // If it's powering on for the first time, then do all of our initialization
-  if (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED || (total_sms_send_count % 7 == 0))
+  if (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED || (total_sms_send_count % 8 == 0))
   {
     doExtendedSelfCheck();
   }
@@ -180,13 +184,13 @@ void doExtendedSelfCheck()
   int64_t imei = _base64_to_int64(imei_base64);
   Serial.print("IMEI (decoded): " + String(imei) + "\n");
 
+  gpsInfo gps_data;
+
   // Check GPS (optional)
   #if WATERPAL_USE_GPS
 
   // Turn GPS on
   bool gps_res = modem_gps_on();
-
-  gpsInfo gps_data;
 
   // Get GPS data, with a timeout of 60 seconds.
   if (modem_get_gps(gps_data, 60))
@@ -215,21 +219,31 @@ void doExtendedSelfCheck()
 
   // Send extended info SMS
   Serial.println("Sending extended info SMS...");
-  char buffer[256];
 
   // Format of the extended data SMS message
-  // Header: "1,2,IMEI,"
+  // Header: "1,IMEI,sms_count,X"
   // Body: "lat (5 decimals),lon (5 decimals),cpsi"
   
   // Format the message
-  snprintf(buffer, sizeof(buffer), "1,2,%s,%f,%f,%s", imei_base64.c_str(), gps_data.lat, gps_data.lon, cpsi.c_str());
+  snprintf(sms_buffer, sizeof(sms_buffer), 
+           "1,%s,%ld,X,%f,%f,%s", 
+           // Header:
+             // Version (1)
+             imei_base64.c_str(),
+             total_sms_send_count,
+             // Packet type (X)
+           // Body:
+             gps_data.lat,
+             gps_data.lon,
+             cpsi.c_str());
 
   // Send the SMS
-  bool sms_res = modem_broadcast_sms(buffer);
+  bool sms_res = modem_broadcast_sms(sms_buffer);
 
   if (sms_res)
   {
     Serial.println("Extended data SMS sent successfully");
+    total_sms_send_count++;
   }
   else
   {
@@ -458,16 +472,67 @@ void doSendSMS()
   // Send a text message (to a configured number) with the the previous day's cumulative water usage time. If the message is sent successfully, then clear the cumulative amount and go back to sleep for another 24 hrs.
   GET_LOCALTIME_NOW; // populate now and timeinfo
 
-  // TODO: Power up the modem (take it out of airplane / low-power mode, or whatever's needed)
+  // Power up the modem (take it out of airplane / low-power mode, or whatever's needed)
+  bool init_success = modem_on();
 
-  // TODO: Send the SMS
-  // TODO: Add the extra sensor data to the SMS message
+  // Get our modem identification
+  String imei_base64 = modem_get_IMEI_base64();
+
+  // Get the battery level
+  Serial.println("Reading battery level...");
+  batteryInfo batt_val = modem_get_batt_val(); //  Get battery value from modem
+  Serial.println( "Battery level: charge status: " + String(batt_val.charging) + " percentage: " + String(batt_val.percentage) + " mV: " + String(batt_val.voltage_mV));
+
+  // Get the signal quality
+  int8_t signal_quality = modem_get_signal_quality();
+  Serial.println("Signal quality: " + String(signal_quality) + "%");
 
   Serial.println("  >> Sending SMS with water usage time: " + String(total_water_usage_time_s) + " seconds");
   Serial.println("  >> SMS sent at " + String(timeinfo.tm_hour) + ":" + String(timeinfo.tm_min) + ":" + String(timeinfo.tm_sec));
 
+  // Calculate extra sensor values
+  print_extra_sensor_vals();
+  float humidity_min = get_extra_sensor_min(0);
+  float humidity_max = get_extra_sensor_max(0);
+  float humidity_avg = get_extra_sensor_avg(0);
+  float temp_min = get_extra_sensor_min(1);
+  float temp_max = get_extra_sensor_max(1);
+  float temp_avg = get_extra_sensor_avg(1);
+
+  Serial.println("  Calculated extra sensor values:");
+  Serial.println("    Humidity: Min: " + String(humidity_min, 2) + " - Avg: " + String(humidity_avg, 2) + " - Max: " + String(humidity_max, 2));
+  Serial.println("    Temperature: Min: " + String(temp_min, 2) + " - Avg: " + String(temp_avg, 2) + " - Max: " + String(temp_max, 2));
+
+  total_water_usage_time_s = 1234567890; // Test value
+  last_time_drift_val_s = 9876543210; // Test value
+
   // TODO: Confirm that it sent correctly, and if so, clear the total water usage time.
   bool success = true;
+                                    // 1,DFzdCiRp6,1,R,   0,   0,21,21,21,38,38,38,54, 0,59
+  snprintf(sms_buffer, sizeof(sms_buffer), "1,%s,%ld,R,%lld,%lld,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+           // Header:
+             // Version (1)
+             imei_base64.c_str(),
+             total_sms_send_count,
+             // Packet type (R)
+           // Body
+             total_water_usage_time_s,
+             last_time_drift_val_s,
+             int(get_extra_sensor_max(1) + 0.5f), // Temperature C (High)
+             int(get_extra_sensor_min(1) + 0.5f), // Temperature C (Low)
+             int(get_extra_sensor_avg(1) + 0.5f), // Temperature C (Avg)
+             int(get_extra_sensor_max(0) + 0.5f), // Humidity (High)
+             int(get_extra_sensor_min(0) + 0.5f), // Humidity (Low)
+             int(get_extra_sensor_avg(0) + 0.5f), // Humidity (Avg)
+             signal_quality, // Signal Strength Pct
+             batt_val.charging, // Battery Charge Status
+             batt_val.percentage, // Battery Charge
+             batt_val.voltage_mV, // Battery Voltage (mV)
+             bootCount, // Boot Count
+             0); // Flutter Count (TODO)
+
+  // Send the SMS
+  success = modem_broadcast_sms(sms_buffer);
 
   if (success)
   {
@@ -479,19 +544,21 @@ void doSendSMS()
     {
       extra_sensor_values[i] = 0;
     }
+    extra_sensor_read_count = 0;
 
     // Save our last send time
     last_sms_send_time_s = tv.tv_sec;
+    total_sms_send_count++;
   }
   else
   {
+    Serial.println("Regular SMS failed to send");
     logError(ERROR_SMS_FAIL); // , "SMS failed to send");
   }
 
-  // TODO: Power down the modem, or put it back into low-power mode
 }
 
-void doReadExtraSensors(int sensorReadIndex) {
+void doReadExtraSensors() {
   // Read the extra sensors here (such as temperature, humidity, etc)
   sensors_setup();
 
@@ -501,11 +568,63 @@ void doReadExtraSensors(int sensorReadIndex) {
   float temp_c = sensors_read_temp_c();
 
   // Print sensor readings (to 2 decimal places)
-  Serial.println("  Humidity: " + String(humidity, 2) + "%, Temp: " + String(temp_c, 2) + "°C");
+  Serial.println("   > Sensor reading: " + String(extra_sensor_read_count) + ":  Humidity: " + String(humidity, 2) + "%, Temp: " + String(temp_c, 2) + "°C");
 
   // Store the sensor values in the array
-  extra_sensor_values[sensorReadIndex * NUM_EXTRA_SENSORS] = humidity;
-  extra_sensor_values[sensorReadIndex * NUM_EXTRA_SENSORS + 1] = temp_c;
+  extra_sensor_values[extra_sensor_read_count * NUM_EXTRA_SENSORS] = humidity;
+  extra_sensor_values[extra_sensor_read_count * NUM_EXTRA_SENSORS + 1] = temp_c;
+
+  extra_sensor_read_count++;
+}
+
+void print_extra_sensor_vals()
+{
+  Serial.println(" **> Debug extra sensor values (" + String(extra_sensor_read_count) + " readings):");
+  for (int i = 0; i < extra_sensor_read_count; i++)
+  {
+    Serial.println("  Reading " + String(i) + ": Humidity: " + String(extra_sensor_values[i * NUM_EXTRA_SENSORS], 2) + "%, Temp: " + String(extra_sensor_values[i * NUM_EXTRA_SENSORS + 1], 2) + " °C");
+  }
+}
+
+float get_extra_sensor_min(int sensor_index)
+{
+  float min_val = extra_sensor_values[sensor_index];
+  for (int i = 0; i < extra_sensor_read_count; i++)
+  {
+    if (extra_sensor_values[i * NUM_EXTRA_SENSORS + sensor_index] < min_val)
+    {
+      min_val = extra_sensor_values[i * NUM_EXTRA_SENSORS + sensor_index];
+    }
+  }
+  return min_val;
+}
+
+float get_extra_sensor_max(int sensor_index)
+{
+  float max_val = extra_sensor_values[sensor_index];
+  for (int i = 0; i < extra_sensor_read_count; i++)
+  {
+    if (extra_sensor_values[i * NUM_EXTRA_SENSORS + sensor_index] > max_val)
+    {
+      max_val = extra_sensor_values[i * NUM_EXTRA_SENSORS + sensor_index];
+    }
+  }
+  return max_val;
+}
+
+float get_extra_sensor_avg(int sensor_index)
+{
+  if (extra_sensor_read_count == 0)
+  {
+    return 0;
+  }
+
+  float sum = 0;
+  for (int i = 0; i < extra_sensor_read_count; i++)
+  {
+    sum += extra_sensor_values[i * NUM_EXTRA_SENSORS + sensor_index];
+  }
+  return sum / extra_sensor_read_count;
 }
 
 // doTimeChecks() takes care of all time-based housekeeping tasks, such as reading the extra sensors, sending SMS messages, and going back to sleep.
@@ -544,12 +663,23 @@ void doTimeChecks() {
   // TODO: Add a grace period here, so that if we're within X minutes of the target time, then do the send / read anyways?
   if (prev_scheduled_sensor_read_time > last_extra_sensor_read_time_s)
   {
-    // Which index should we use to store this reading in today's array?
-    int sensorReadIndex = int(seconds_since_midnight / EXTRA_SENSOR_READ_INTERVAL);
-
-    doReadExtraSensors(sensorReadIndex);
+    Serial.println("    !Time to read extra sensors!");
+    doReadExtraSensors();
 
     last_extra_sensor_read_time_s = now;
+
+    print_extra_sensor_vals();
+    float humidity_min = get_extra_sensor_min(0);
+    float humidity_max = get_extra_sensor_max(0);
+    float humidity_avg = get_extra_sensor_avg(0);
+    float temp_min = get_extra_sensor_min(1);
+    float temp_max = get_extra_sensor_max(1);
+    float temp_avg = get_extra_sensor_avg(1);
+
+    Serial.println("  Calculated extra sensor values:");
+    Serial.println("    Humidity: Min: " + String(humidity_min, 2) + " - Avg: " + String(humidity_avg, 2) + " - Max: " + String(humidity_max, 2));
+    Serial.println("    Temperature: Min: " + String(temp_min, 2) + " - Avg: " + String(temp_avg, 2) + " - Max: " + String(temp_max, 2));
+
   }
 
   // When was the previous time that we should have sent an SMS today?
@@ -568,17 +698,20 @@ void doTimeChecks() {
   time_t next_scheduled_sms_send_time = prev_scheduled_sms_send_time + SMS_DAILY_SEND_INTERVAL;
   time_t next_scheduled_sensor_read_time = prev_scheduled_sensor_read_time + EXTRA_SENSOR_READ_INTERVAL;
 
-  Serial.println("  Next scheduled sensor read time: " + String(next_scheduled_sensor_read_time));
-  Serial.println("  Next scheduled SMS send time: " + String(next_scheduled_sms_send_time));
+  Serial.println("  Next scheduled sensor read time: " + String(next_scheduled_sensor_read_time) + " (delta: " + String(next_scheduled_sensor_read_time - now) + ")");
+  Serial.println("  Next scheduled SMS send time: " + String(next_scheduled_sms_send_time) + " (delta: " + String(next_scheduled_sms_send_time - now) + ")");
 
   // Figure out which of the two times is closer, and set the next wake up time to be that time.
   time_t next_wake_time = next_scheduled_sms_send_time;
   if (next_scheduled_sensor_read_time < next_scheduled_sms_send_time)
   {
+    Serial.println("   Next wake time is the sensor read time");
     next_wake_time = next_scheduled_sensor_read_time;
+  } else {
+    Serial.println("   Next wake time is the SMS send time");
   }
 
-  Serial.println("  Next wake time: " + String(next_wake_time));
+  Serial.println("  Next wake time: " + String(next_wake_time) + " (delta: " + String(next_wake_time - now) + ")");
 
   doDeepSleep(next_wake_time);
 }
@@ -592,6 +725,9 @@ void doDeepSleep(time_t nextWakeTime)
 
   // Calculate the time until the next wakeup time. Get current RTC time via gettimeofday()
   GET_LOCALTIME_NOW; // populate `now` and `timeinfo`
+
+  // Shut off the modem (TODO: Perhaps only put it into sleep / low-power mode?)
+  modem_off();
 
   // Calculate the time until the next wakeup
   time_t seconds_until_wakeup = nextWakeTime - now;
