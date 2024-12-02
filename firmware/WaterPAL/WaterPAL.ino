@@ -503,9 +503,6 @@ void doSendSMS()
   Serial.println("    Humidity: Min: " + String(humidity_min, 2) + " - Avg: " + String(humidity_avg, 2) + " - Max: " + String(humidity_max, 2));
   Serial.println("    Temperature: Min: " + String(temp_min, 2) + " - Avg: " + String(temp_avg, 2) + " - Max: " + String(temp_max, 2));
 
-  total_water_usage_time_s = 1234567890; // Test value
-  last_time_drift_val_s = 9876543210; // Test value
-
   // TODO: Confirm that it sent correctly, and if so, clear the total water usage time.
   bool success = true;
                                     // 1,DFzdCiRp6,1,R,   0,   0,21,21,21,38,38,38,54, 0,59
