@@ -226,7 +226,7 @@ void doExtendedSelfCheck()
   
   // Format the message
   snprintf(sms_buffer, sizeof(sms_buffer), 
-           "1,%s,%ld,X,%f,%f,%s", 
+           "1,%s,%lld,X,%f,%f,%s",
            // Header:
              // Version (1)
              imei_base64.c_str(),
@@ -506,7 +506,7 @@ void doSendSMS()
   // Confirm that it sent correctly, and if so, clear the total water usage time.
   bool success = false;
 
-  snprintf(sms_buffer, sizeof(sms_buffer), "1,%s,%ld,R,%lld,%lld,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+  snprintf(sms_buffer, sizeof(sms_buffer), "1,%s,%lld,R,%lld,%lld,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
            // Header:
              // Version (1)
              imei_base64.c_str(),
