@@ -222,11 +222,14 @@ void doExtendedSelfCheck()
 
   // Format of the extended data SMS message
   // Header: "1,IMEI,sms_count,X"
-  // Body: "lat (5 decimals),lon (5 decimals),cpsi"
+  // Body: "lat (6 decimals),lon (6 decimals),cpsi"
+  // NOTE: Accuracy of the lat/lon is 6 decimal places, which is about 0.11 meters.
+  // Reference for accuracy: https://gis.stackexchange.com/questions/8650/measuring-accuracy-of-latitude-and-longitude
+  //                         https://en.wikipedia.org/wiki/Decimal_degrees#Precision
 
   // Format the message
   snprintf(sms_buffer, sizeof(sms_buffer),
-           "1,%s,%lld,X,%f,%f,%s",
+           "1,%s,%lld,X,%.6f,%.6f,%s",
            // Header:
              // Version (1)
              imei_base64.c_str(),
