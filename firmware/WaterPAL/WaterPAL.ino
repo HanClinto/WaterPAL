@@ -179,7 +179,7 @@ void doExtendedSelfCheck()
 
   // Check IMEI
   String imei_base64 = modem_get_IMEI_base64();
-  
+
   Serial.print("IMEI (base64 encoded): " + imei_base64 + "\n");
   int64_t imei = _base64_to_int64(imei_base64);
   Serial.print("IMEI (decoded): " + String(imei) + "\n");
@@ -223,9 +223,9 @@ void doExtendedSelfCheck()
   // Format of the extended data SMS message
   // Header: "1,IMEI,sms_count,X"
   // Body: "lat (5 decimals),lon (5 decimals),cpsi"
-  
+
   // Format the message
-  snprintf(sms_buffer, sizeof(sms_buffer), 
+  snprintf(sms_buffer, sizeof(sms_buffer),
            "1,%s,%lld,X,%f,%f,%s",
            // Header:
              // Version (1)
@@ -251,169 +251,6 @@ void doExtendedSelfCheck()
   }
 
 }
-/*
-// TODO: Many of the modem functions are growing large enough that we can probably break them out into a supplementary source file soon, so that they don't continue to clutter up the rest of the program flow.
-void doFirstTimeInitialization()
-{
-  Serial.println("doFirstTimeInitialization()");
-  printLocalTime(); // NOTE: This should print an uninitialized time (1970) until we set the time from the cell tower.
-
-  //delay(1000); // TODO: Unneeded?
-  // Ensure that we can communicate with the cell modem, and that it can connect with the tower
-  // If it can connect with the tower, then set the internal RTC according to the cell tower's information so that we have correct local time.
-  // Send an SMS with a "powered on" message including our GPS (if available), battery voltage, tower information, etc.
-
-  Serial.println("Powering on cell modem...");
-
-  bool init_success = modem_on();
-
-  // RF antenna should be started by now
-  Serial.println("Println: Your boot count start number is: " + String(bootCount));
-
-  // Texts to send on initialization loop:
-  // Test: modem.sendSMS(DEST_PHONE_NUMBER, String("SMS from doFirstTimeInitialization block"));  //send SMS
-  if (!modem.sendSMS(DEST_PHONE_NUMBER, "SMS: Your boot count start number is: " + String(+bootCount))) // send SMS
-  {
-    Serial.println("Counter send failed");
-  } else {
-    Serial.println("Counter send successful");
-  }
-
-  Serial.println("Reading battery level...");
-  batteryInfo last_batt_val = modem_get_batt_val(); //  Get battery value from modem
-  last_batt_val_charging = last_batt_val.charging;
-  last_batt_val_percentage = last_batt_val.percentage;
-  last_batt_val_voltage_mV = last_batt_val.voltage_mV;
-  Serial.println( "Battery level: charge status: " + String(last_batt_val_charging) + " percentage: " + String(last_batt_val_percentage) + " mV: " + String(last_batt_val_voltage_mV));
-
-  if (!modem.sendSMS(DEST_PHONE_NUMBER, "Battery level: charge status: " + String(last_batt_val_charging) + " percentage: " + String(last_batt_val_percentage) + " mV: " + String(last_batt_val_voltage_mV))) // send cell tower strength to text
-  {
-    DBG("Battery level send failed");
-  }
-  // End battery check section
-
-  // This section checks cell tower info
-  String res = modem.getIMEI();
-  Serial.print("IMEI:");
-  Serial.println(res);
-  Serial.println();
-
-  modem.sendAT("+CPSI?"); //  test cell provider info
-  if (modem.waitResponse("+CPSI: ") == 1)
-  {
-    res = modem.stream.readStringUntil('\n');
-    res.trim();
-    modem.waitResponse();
-    Serial.println(">> The current network parameters are: '" + res + "'");
-  } else {
-    Serial.println(">> No network parameters found");
-  }
-
-  Serial.println("Sending network parameters via SMS...");
-  // Send tower info
-  if (!modem.sendSMS(DEST_PHONE_NUMBER, String(res)))
-  {
-    DBG("Network parameter send failed");
-  }
-  // End tower info section
-
-  Serial.println("\n---Getting Signal Quality---\n");
-
-  // Read tower signal strength
-  int csq = modem.getSignalQuality();
-  if (csq == 99) {
-    Serial.println(">> Failed to get signal quality");
-    csq = 0;
-  }
-  // getSignalQuality returns 99 if it fails, or 0-31 if it succeeds, so we check for failure and map return values to percentage from 0-100.
-  csq = map(csq, 0, 31, 0, 100);
-  Serial.println("Signal quality: " + String(csq) + "%");
-
-  if (!modem.sendSMS(DEST_PHONE_NUMBER, String(" SMS: Your signal strength: " + String(csq) + "%")))
-  {
-    DBG("Signal strength send failed");
-  }
-  //   End tower signal strength section
-
-
-#if WATERPAL_USE_GPS
-  // TODO: This section loops endlessly if we don't have a GPS antenna connected. Need to add a timeout // fallback.
-  Serial.println("\n---Starting GPS TEST---\n");
-  // Set Modem GPS Power Control Pin to HIGH ,turn on GPS power
-  // Only in version 20200415 is there a function to control GPS power
-  modem.sendAT("+CGPIO=0,48,1,1");
-  if (modem.waitResponse(10000L) != 1)
-  {
-    DBG("Set GPS Power HIGH Failed");
-  }
-
-  Serial.println("\nEnabling GPS...\n");
-  modem.enableGPS();
-
-  float lat, lon; //  Check float has more than two decimal places in SMS?
-
-  struct timeval gps_start;
-  gettimeofday(&gps_start, NULL);
-  struct timeval gps_now = gps_start;
-
-  #define GPS_TIMEOUT_S 60
-
-  while (gps_now.tv_sec - gps_start.tv_sec < GPS_TIMEOUT_S)
-  {
-    if (modem.getGPS(&lat, &lon))
-    {
-      Serial.printf("lat:%f lon:%f\n", lat, lon);
-      break;
-    }
-    else
-    {
-      Serial.print("getGPS failed. Is your antenna plugged in? Time: ");
-      Serial.println(millis());
-    }
-    gettimeofday(&gps_now, NULL);
-    delay(2000);
-  }
-
-  modem.disableGPS();
-
-  // Set Modem GPS Power Control Pin to LOW ,turn off GPS power
-  // Only in version 20200415 is there a function to control GPS power
-  modem.sendAT("+CGPIO=0,48,1,0");
-  if (modem.waitResponse(10000L) != 1)
-  {
-    DBG("Set GPS Power LOW Failed");
-  }
-
-  //  Send GPS info to SMS target
-  if (!modem.sendSMS(DEST_PHONE_NUMBER, String(" Lat " + String(+lat, 6)))) //  Send six decimal places to SMS
-  {
-    DBG("GPS lat send failed");
-  }
-  if (!modem.sendSMS(DEST_PHONE_NUMBER, String(" Lon " + String(+lon, 6)))) //  Send six decimal places to SMS
-  {
-    DBG("GPS lon send failed");
-  }
-
-  Serial.println("\n---End of GPRS TEST---\n");
-#endif // WATERPAL_USE_GPS
-
-  // TODO: Needed delay?
-  delay(1000); // delay 1 second before powering antenna down
-
-  //  This section powers down RF (cell) antenna
-  SerialAT.println("AT+CPOWD=1"); // see page 83
-
-  // TODO: Needed delay?
-  delay(1000);
-  while (SerialAT.available())
-  {
-    Serial.write(SerialAT.read());
-  }
-  // End RF antenna power down section
-
-  Serial.println("\n---End of doFirstTimeInitialization()---");
-}
-*/
 
 void doLogRisingEdge()
 {
