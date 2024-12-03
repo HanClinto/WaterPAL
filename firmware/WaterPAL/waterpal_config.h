@@ -21,7 +21,7 @@ const char* WATERPAL_DEST_PHONE_NUMBERS[] = {
 //  If set to true, the device will attempt to get the GPS location and send it in an SMS message.
 //  If set to false, the device will skip the GPS location step.
 //  If you don't have a GPS module connected, or want to conserve power, set this to false.
-#define WATERPAL_USE_GPS false
+#define WATERPAL_USE_GPS true
 
 // How frequently do we want to send an SMS message?
 // 22 hours after midnight
