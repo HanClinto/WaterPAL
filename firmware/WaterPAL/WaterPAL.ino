@@ -503,9 +503,9 @@ void doSendSMS()
   Serial.println("    Humidity: Min: " + String(humidity_min, 2) + " - Avg: " + String(humidity_avg, 2) + " - Max: " + String(humidity_max, 2));
   Serial.println("    Temperature: Min: " + String(temp_min, 2) + " - Avg: " + String(temp_avg, 2) + " - Max: " + String(temp_max, 2));
 
-  // TODO: Confirm that it sent correctly, and if so, clear the total water usage time.
-  bool success = true;
-                                    // 1,DFzdCiRp6,1,R,   0,   0,21,21,21,38,38,38,54, 0,59
+  // Confirm that it sent correctly, and if so, clear the total water usage time.
+  bool success = false;
+
   snprintf(sms_buffer, sizeof(sms_buffer), "1,%s,%ld,R,%lld,%lld,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
            // Header:
              // Version (1)
@@ -513,14 +513,14 @@ void doSendSMS()
              total_sms_send_count,
              // Packet type (R)
            // Body
-             total_water_usage_time_s,
-             last_time_drift_val_s,
-             int(get_extra_sensor_max(1) + 0.5f), // Temperature C (High)
+             total_water_usage_time_s, // Total water usage time (s)
+             last_time_drift_val_s, // Time drift (s)
              int(get_extra_sensor_min(1) + 0.5f), // Temperature C (Low)
              int(get_extra_sensor_avg(1) + 0.5f), // Temperature C (Avg)
-             int(get_extra_sensor_max(0) + 0.5f), // Humidity (High)
+             int(get_extra_sensor_max(1) + 0.5f), // Temperature C (High)
              int(get_extra_sensor_min(0) + 0.5f), // Humidity (Low)
              int(get_extra_sensor_avg(0) + 0.5f), // Humidity (Avg)
+             int(get_extra_sensor_max(0) + 0.5f), // Humidity (High)
              signal_quality, // Signal Strength Pct
              batt_val.charging, // Battery Charge Status
              batt_val.percentage, // Battery Charge
