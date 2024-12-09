@@ -241,7 +241,7 @@ void doExtendedSelfCheck()
              cpsi.c_str());
 
   // Send the SMS
-  bool sms_res = modem_broadcast_sms(sms_buffer);
+  bool sms_res = modem_broadcast_sms(sms_buffer, 30);
 
   if (sms_res)
   {
@@ -369,7 +369,7 @@ void doSendSMS()
              0); // Flutter Count (TODO)
 
   // Send the SMS
-  success = modem_broadcast_sms(sms_buffer);
+  success = modem_broadcast_sms(sms_buffer, 30);
 
   if (success)
   {
