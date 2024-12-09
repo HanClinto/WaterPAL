@@ -300,7 +300,7 @@ int8_t modem_setLocalTimeFromCCLK() {
 //  Identity (IMEI, base64 encoded, 
 
 
-bool modem_broadcast_sms(const String& message)
+bool modem_broadcast_sms(const String& message, const int num_retries = 10)
 {
   bool error = false;
 
@@ -311,7 +311,23 @@ bool modem_broadcast_sms(const String& message)
   // Send the SMS message to all the phone numbers in the list
   for (int i = 0; i < num_phone_numbers; i++)
   {
-    if (!modem.sendSMS(WATERPAL_DEST_PHONE_NUMBERS[i], message))
+    int retry_cnt = 0;
+
+    // Retry sending the SMS message up to num_retries times
+    while (retry_cnt < num_retries)
+    {
+      if (modem.sendSMS(WATERPAL_DEST_PHONE_NUMBERS[i], message))
+      {
+        Serial.println(" SMS message sent successfully to number [" + String(i) + "]");
+        break;
+      }
+      retry_cnt++;
+
+      Serial.println(" Failed to send SMS message to number [" + String(i) + "]. Retrying... (attempt " + String(retry_cnt) + ")");
+
+      delay(1000);
+    }
+    if (retry_cnt == num_retries)
     {
       logError(ERROR_SMS_FAIL); //, "Failed to send SMS message");
       error = true;
