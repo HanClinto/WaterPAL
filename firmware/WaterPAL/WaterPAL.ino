@@ -132,7 +132,8 @@ void setup()
   // If it's powering on for the first time, then do all of our initialization
   if (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED || (total_sms_send_count % 8 == 0))
   {
-    doExtendedSelfCheck();
+    bool doSetNetworkMode = (bootCount == 1);
+    doExtendedSelfCheck(doSetNetworkMode);
   }
   else if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0)
   {
@@ -161,7 +162,7 @@ void setup()
 
 
 // We only do an extended self-check every X boots, to save power.
-void doExtendedSelfCheck()
+void doExtendedSelfCheck(bool doSetNetworkMode = false)
 {
   Serial.println("doExtendedSelfCheck()");
   printLocalTime(); // NOTE: This should print an uninitialized time (1970) until we set the time from the cell tower.
@@ -176,6 +177,17 @@ void doExtendedSelfCheck()
 
   // Now get the local time again and print it as a check
   printLocalTime();
+
+  // Optional: Set Network Mode
+  if (doSetNetworkMode)
+  {
+    Serial.println("Setting network mode...");
+    // 2 Automatic
+    // 13 GSM only
+    // 38 LTE only
+    // 51 GSM and LTE only
+    modem.setNetworkMode(WATERPAL_NETWORK_MODE);
+  }
 
   // Check IMEI
   String imei_base64 = modem_get_IMEI_base64();
