@@ -30,6 +30,12 @@ const char* WATERPAL_DEST_PHONE_NUMBERS[] = {
 // 51 GSM and LTE only
 #define WATERPAL_NETWORK_MODE 13 // GSM only
 
+// WATERPAL_SMS_RETRY_CNT: How many times to retry sending an SMS message
+#define WATERPAL_SMS_RETRY_CNT 10
+
+// WATERPAL_SMS_SHORT_RETRY_CNT: How many times to retry sending a short SMS message
+#define WATERPAL_SMS_SHORT_RETRY_CNT 10
+
 // How frequently do we want to send an SMS message?
 // 22 hours after midnight
 //#define SMS_DAILY_SEND_INTERVAL (22 * (60l * 60l)) // 22 hours in seconds

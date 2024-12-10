@@ -325,7 +325,7 @@ bool modem_broadcast_sms(const String& message, const int num_retries = 10)
 
       int signal_quality = modem_get_signal_quality();
 
-      Serial.println(" Failed to send SMS message to number [" + String(i) + "]. Signal quality: " + String(signal_quality) + ". Retrying... (attempt " + String(retry_cnt) + ")");
+      Serial.println(" Failed to send SMS message to number [" + String(i) + "]. Signal quality: " + String(signal_quality) + ". Retrying... (attempt " + String(retry_cnt) + " of " + String(num_retries) + ")");
 
       delay(1000);
     }

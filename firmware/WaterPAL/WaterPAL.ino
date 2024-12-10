@@ -74,6 +74,7 @@ void doLogRisingEdge();
 void doLogFallingEdge();
 void doSendSMS();
 void printLocalTime();
+void doExtendedSelfCheck(bool doSetNetworkMode);
 
 void print_extra_sensor_vals();
 float get_extra_sensor_min(int sensor_index);
@@ -253,7 +254,7 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
              cpsi.c_str());
 
   // Send the SMS
-  bool sms_res = modem_broadcast_sms(sms_buffer, 30);
+  bool sms_res = modem_broadcast_sms(sms_buffer, WATERPAL_SMS_RETRY_CNT);
 
   if (sms_res)
   {
@@ -263,8 +264,28 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
   else
   {
     logError(ERROR_SMS_FAIL); // , "Failed to send SMS message");
-  }
 
+    // Create a short identifier by only taking the last 2 characters of the IMEI for an identifier
+    String imei_short = imei_base64.substring(imei_base64.length() - 2);
+
+    int sms_send_count_last_digit = total_sms_send_count % 10;
+
+    snprintf(sms_buffer, sizeof(sms_buffer),
+    // xIMEIsms_count,cpsi
+    "x%s%d,%s",
+    // Header:
+    // 'x' (for "short extended packet")
+    imei_short.c_str(), // Short IMEI
+    sms_send_count_last_digit, // SMS count, limited to 1 digits
+    // Body:
+      cpsi.c_str());
+    
+    // Ensure we're truncated to 14 characters
+    sms_buffer[14] = '\0';
+
+    Serial.println("Failed to send full SMS. Retrying with shorter message: " + String(sms_buffer));
+    sms_res = modem_broadcast_sms(sms_buffer, WATERPAL_SMS_SHORT_RETRY_CNT);
+  }
 }
 
 void doLogRisingEdge()
@@ -381,7 +402,7 @@ void doSendSMS()
              0); // Flutter Count (TODO)
 
   // Send the SMS
-  success = modem_broadcast_sms(sms_buffer, 30);
+  success = modem_broadcast_sms(sms_buffer, WATERPAL_SMS_RETRY_CNT);
 
   if (success)
   {
@@ -403,6 +424,32 @@ void doSendSMS()
   {
     Serial.println("Regular SMS failed to send");
     logError(ERROR_SMS_FAIL); // , "SMS failed to send");
+
+    // Create a short identifier by only taking the last 2 characters of the IMEI for an identifier
+    String imei_short = imei_base64.substring(imei_base64.length() - 2);
+
+    int sms_send_count_last_digit = total_sms_send_count % 10;
+
+    snprintf(sms_buffer, sizeof(sms_buffer),
+      // Short buffer, limited to 14 characters
+      // rIMEIsms_count,water_usage_time,batt_pct,temp_avg
+      // Short "regular" packet uses a lower-case 'r' to indicate a short packet.
+      "r%s%d,%d,%d,%d",
+      // Header: (5 characters)
+        // 'x' (for "short extended packet")
+        imei_short.c_str(), // Short IMEI
+        sms_send_count_last_digit, // SMS count, limited to 1 digits
+      // Body: (9 characters)
+        total_water_usage_time_s,
+        batt_val.percentage,
+        int(get_extra_sensor_avg(1) + 0.5f)
+    );
+    
+    // Ensure we're truncated to 14 characters
+    sms_buffer[14] = '\0';
+
+    Serial.println("Failed to send full SMS. Retrying with shorter message: " + String(sms_buffer));
+    success = modem_broadcast_sms(sms_buffer, WATERPAL_SMS_SHORT_RETRY_CNT);
   }
 
 }
