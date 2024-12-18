@@ -60,7 +60,7 @@ bool modem_on(bool full_restart = true)
 bool modem_off()
 {
   // Send the shutdown command
-  modem.sendAT("AT+CPOWD=1"); // Power down the modem
+  modem.sendAT("+CPOWD=1"); // Power down the modem
   delay(1000);
 
   // TODO: Do we want to check for a response here?
