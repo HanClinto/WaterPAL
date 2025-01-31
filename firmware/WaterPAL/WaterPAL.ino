@@ -65,6 +65,7 @@ char sms_buffer[256];
 #include "waterpal_modem.h"
 #include "waterpal_sensors.h"
 #include "waterpal_clock.h"
+#include "waterpal_gprs.h"
 
 // Function prototypes
 void doTimeChecks();
@@ -375,6 +376,40 @@ void doSendSMS()
   Serial.println("  Calculated extra sensor values:");
   Serial.println("    Humidity: Min: " + String(humidity_min, 2) + " - Avg: " + String(humidity_avg, 2) + " - Max: " + String(humidity_max, 2));
   Serial.println("    Temperature: Min: " + String(temp_min, 2) + " - Avg: " + String(temp_avg, 2) + " - Max: " + String(temp_max, 2));
+
+  // Check to see if we should send our update via HTTP
+  if (WATERPAL_USE_GPRS)
+  {
+    int gprs_success = gprs_connect();
+
+    if (!gprs_success)
+    {
+      Serial.println("Failed to connect to GPRS");
+      logError(ERROR_GPRS_FAIL); // , "Failed to connect to GPRS");
+    } else {
+      Serial.println("Sending data via GPRS...");
+      gprs_success = gprs_send_data(imei_base64, total_sms_send_count, total_water_usage_time_s, last_time_drift_val_s);
+
+      if (!gprs_success)
+      {
+        Serial.println("Failed to send data via GPRS");
+        logError(ERROR_GPRS_FAIL); // , "Failed to send data via GPRS");
+      } else {
+        Serial.println("Data sent successfully via GPRS");
+      }
+    }
+
+    // Disconnect from GPRS
+    gprs_success = gprs_disconnect();
+
+    if (!gprs_success)
+    {
+      Serial.println("Failed to disconnect from GPRS");
+      logError(ERROR_GPRS_FAIL); // , "Failed to disconnect from GPRS");
+    } else {
+      Serial.println("Disconnected from GPRS");
+    }
+  }
 
   // Confirm that it sent correctly, and if so, clear the total water usage time.
   bool success = false;
