@@ -1,8 +1,8 @@
 // WaterPAL - Water Pump Activity Logger
 // Copyright (c) 2024 Clint Herron and Stephen Peacock
 // MIT License
-
-#define TINY_GSM_MODEM_SIM7000  //  Purpose:  inform the TinyGSM library which GSM module you are using. This allows the library to tailor its operations, such as AT commands and responses
+#define TINY_GSM_MODEM_SIM7000SSL
+//#define TINY_GSM_MODEM_SIM7000  //  Purpose:  inform the TinyGSM library which GSM module you are using. This allows the library to tailor its operations, such as AT commands and responses
 #define TINY_GSM_RX_BUFFER 1024 //  Purpose:  determines how much data can be stored temporarily while it is being received from the GSM module.
 
 #define GSM_PIN ""              //  NOTE: not sure if needed or not
@@ -158,6 +158,13 @@ void setup()
 
   // Even if we woke up for a rising edge, we should still check to see if it's time to send an SMS.
 
+  // Check to see if we've received any SMS
+  String incoming_sms = modem_read_sms();
+  if (incoming_sms.length() > 0)
+  {
+    Serial.println("Received SMS: '" + incoming_sms + "'");
+  }
+
   // No matter how we woke up, always go back to sleep at the end.
   doTimeChecks();
 }
@@ -229,6 +236,39 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
     logError(ERROR_MODEM_FAIL); //, "Failed to get cell tower info");
   } else {
     Serial.println("Cell Tower Info: " + cpsi);
+  }
+
+  // Check to see if we should send our update via HTTP
+  if (WATERPAL_USE_GPRS)
+  {
+    Serial.println("Connecting to GPRS for extended data...");
+    int gprs_success = gprs_connect();
+
+    if (!gprs_success)
+    {
+      Serial.println("Failed to connect to GPRS");
+      logError(ERROR_GPRS_FAIL); // , "Failed to connect to GPRS");
+    } else {
+      Serial.println("Sending extended data via GPRS...");
+      gprs_success = gprs_send_data_weekly(
+        imei_base64,
+        total_sms_send_count,
+        gps_data.lat,
+        gps_data.lon,
+        cpsi
+        );
+
+      if (!gprs_success)
+      {
+        Serial.println("Failed to send data via GPRS");
+        logError(ERROR_GPRS_FAIL); // , "Failed to send data via GPRS");
+        Serial.println("Waiting to read debug messages...");
+        sleep(100000);
+      } else {
+        Serial.println("Data sent successfully via GPRS");
+      }
+    }
+
   }
 
   // Send extended info SMS
@@ -380,6 +420,7 @@ void doSendSMS()
   // Check to see if we should send our update via HTTP
   if (WATERPAL_USE_GPRS)
   {
+    Serial.println("Connecting to GPRS...");
     int gprs_success = gprs_connect();
 
     if (!gprs_success)
@@ -388,7 +429,22 @@ void doSendSMS()
       logError(ERROR_GPRS_FAIL); // , "Failed to connect to GPRS");
     } else {
       Serial.println("Sending data via GPRS...");
-      gprs_success = gprs_send_data(imei_base64, total_sms_send_count, total_water_usage_time_s, last_time_drift_val_s);
+      gprs_success = gprs_send_data_daily(
+        imei_base64,
+        total_sms_send_count,
+        total_water_usage_time_s,
+        last_time_drift_val_s,
+        temp_min,
+        temp_avg,
+        temp_max,
+        humidity_min,
+        humidity_avg,
+        humidity_max,
+        signal_quality,
+        batt_val.charging,
+        batt_val.percentage,
+        batt_val.voltage_mV,
+        bootCount);
 
       if (!gprs_success)
       {

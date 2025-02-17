@@ -203,6 +203,11 @@ int64_t modem_get_IMEI()
   // Ex: "869951037053562"
   String imei_str = modem.getIMEI();
 
+  if (imei_str.length() == 0)
+  {
+    imei_str = "0000000000000000"; // Default if we cannot get an IMEI
+  }
+
   Serial.println("IMEI: " + imei_str);
 
   // Parse the IMEI string into a 64-bit integer
@@ -348,6 +353,39 @@ bool modem_broadcast_sms_sprintf(const char* format, ...)
   va_end(args);
 
   return modem_broadcast_sms(buffer);
+}
+
+String modem_read_sms()
+{
+  // Configure the modem to read SMS messages
+  modem.sendAT("+CMGF=1"); // Set SMS mode to text
+  if (modem.waitResponse() != 1)
+  {
+    logError(ERROR_SMS_FAIL); //, "Failed to set SMS mode to text");
+    return "";
+  }
+
+  // Read the SMS message
+  modem.sendAT("+CMGR=1"); // Read SMS message at index 1
+  if (modem.waitResponse("+CMGR: ") != 1)
+  {
+    logError(ERROR_SMS_FAIL); //, "Failed to read SMS message");
+    return "";
+  }
+
+  // Parse the SMS message
+  String sms = modem.stream.readStringUntil('\n');
+  sms.trim();
+  modem.waitResponse();
+
+  // Delete all read SMS messages
+  modem.sendAT("+CMGD=1,4"); // Delete all read SMS messages
+  if (modem.waitResponse() != 1)
+  {
+    logError(ERROR_SMS_FAIL); //, "Failed to delete SMS messages");
+  }
+
+  return sms;
 }
 
 // **********
