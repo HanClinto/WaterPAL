@@ -12,6 +12,8 @@
 // Starting up the modem
 // Powering down the modem
 
+int64_t modem_get_IMEI();
+
 static bool _modem_is_on = false; // 0 = off, 1 = on
 
 bool modem_on(bool full_restart = true)
@@ -57,12 +59,85 @@ bool modem_on(bool full_restart = true)
   return success;
 }
 
+int64_t _imei;
+
+int64_t modem_on_get_imei()
+{
+  if (_modem_is_on)
+  {
+    Serial.println("Modem is already on");
+    return _imei;
+  }
+
+  // Start the cell antenna
+  pinMode(PWR_PIN, OUTPUT);    // Set power pin to output needed to START modem on power pin 4
+  digitalWrite(PWR_PIN, HIGH); // Set power pin high (on), which when inverted is low
+  delay(1000);                 // Docs note: "Starting the machine requires at least 1 second of low level, and with a level conversion, the levels are opposite"
+  // NOTE: Some docs say 300ms is sufficient, but we're using 1s to be safe.
+  digitalWrite(PWR_PIN, LOW);  // Set power pin low (off), which when inverted is high
+
+  SerialAT.begin(UART_BAUD, SERIAL_8N1, PIN_RX, PIN_TX); // Set conditions for serial port to read and write
+
+  bool success = false;
+
+  bool full_restart = false;
+
+  // Start the modem
+
+  do {
+    // There are two ways to initialize the modem -- restart, or simple init.
+    if (full_restart) {
+      Serial.println("Initializing modem via restart..."); // Start modem on next line
+      if (!modem.restart())
+      { //  Command to start modem, see extended notes tab
+        Serial.println("Failed to restart modem, attempting to continue without restarting");
+      } else {
+        Serial.println("Modem restarted");
+      }
+    } else {
+      Serial.println("Initializing modem via initialize..."); // Start modem on next line
+      if (!modem.init())
+      { //  Command to start modem, see extended notes tab
+        Serial.println("Failed to init modem, attempting to continue...");
+      } else {
+        Serial.println("Modem initialized");
+      }
+    }
+
+    _imei = modem_get_IMEI();
+
+    for (int i = 0; i < 10; i++)
+    {
+      if (_imei != 0)
+      {
+        Serial.print("Successfully retrievied IMEI: ");
+        Serial.println(_imei);
+        success = true;
+        break;
+      }
+      Serial.println("Failed to get IMEI, retrying...");
+      // Wait a bit
+      delay(1000);
+      // Clear our modem input buffer
+      while (SerialAT.available())
+      {
+        SerialAT.read();
+      }
+      _imei = modem_get_IMEI();
+    }
+
+  } while (!success);
+
+  _modem_is_on = true;
+ 
+  return _imei;
+}
+
 bool modem_off()
 {
   // Send the shutdown command
   modem.sendAT("+CPOWD=1"); // Power down the modem
   delay(1000);
-
   // TODO: Do we want to check for a response here?
 
   // TODO: Should we sleep the modem instead of turning it off entirely?
@@ -203,10 +278,10 @@ int64_t modem_get_IMEI()
   // Ex: "869951037053562"
   String imei_str = modem.getIMEI();
 
-  if (imei_str.length() == 0)
-  {
-    imei_str = "0000000000000000"; // Default if we cannot get an IMEI
-  }
+  //if (imei_str.length() == 0)
+  //{
+  //  imei_str = "0000000000000000"; // Default if we cannot get an IMEI
+  //}
 
   Serial.println("IMEI: " + imei_str);
 

@@ -8,7 +8,7 @@
 #define GSM_PIN ""              //  NOTE: not sure if needed or not
 
 #define SerialAT Serial1   //  Purpose:  Select hardware serial port for AT commands
-#define DUMP_AT_COMMANDS   //  Purpose:  you can see every AT command that the TinyGSM library sends to the GSM module, as well as the responses received.
+//#define DUMP_AT_COMMANDS   //  Purpose:  you can see every AT command that the TinyGSM library sends to the GSM module, as well as the responses received.
 
 #include <TinyGsmClient.h> //  Purpose:  header file in the TinyGSM library, for communicating with various GSM modules. The library provides an abstraction layer that simplifies the process of sending AT commands.
 #include <SPI.h>           //  Purpose:  header file for the SPI (Serial Peripheral Interface) library in Arduino for communicating to SD cards. SPI devices etc
@@ -43,7 +43,6 @@ volatile RTC_DATA_ATTR int64_t total_sms_send_count = 0; // Total number of SMS 
 volatile RTC_DATA_ATTR int64_t last_sms_send_time_s = 0;         // Seconds since epoch of the last SMS send time
 volatile RTC_DATA_ATTR int64_t last_extra_sensor_read_time_s = 0;// Seconds since epoch of the last extra sensor read
 
-
 // How frequently do we want to log from peripheral sensors? (temp, humidity, etc)
 #define EXTRA_SENSOR_READ_INTERVAL ((24l * 60l * 60l) / NUM_EXTRA_SENSOR_READS_PER_DAY)
 
@@ -58,6 +57,8 @@ int input_pin_value = 0;
 //  GPS lat/lon
 float lat;
 float lon;
+
+int64_t imei = 0;
 
 char sms_buffer[256];
 
@@ -178,7 +179,8 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
 
   // Turn on the modem
   Serial.println("Powering on cell modem...");
-  bool init_success = modem_on();
+  imei = modem_on_get_imei();
+  String imei_base64 = _int64_to_base64(imei);
 
   // Update system time and check for drift
   Serial.println("\n---Getting Tower Timestamp---\n");
@@ -199,11 +201,14 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
   }
 
   // Check IMEI
+
+  /*
   String imei_base64 = modem_get_IMEI_base64();
 
   Serial.print("IMEI (base64 encoded): " + imei_base64 + "\n");
   int64_t imei = _base64_to_int64(imei_base64);
   Serial.print("IMEI (decoded): " + String(imei) + "\n");
+  */
 
   gpsInfo gps_data;
 
@@ -262,8 +267,6 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
       {
         Serial.println("Failed to send data via GPRS");
         logError(ERROR_GPRS_FAIL); // , "Failed to send data via GPRS");
-        Serial.println("Waiting to read debug messages...");
-        sleep(100000);
       } else {
         Serial.println("Data sent successfully via GPRS");
       }
@@ -387,10 +390,12 @@ void doSendSMS()
   GET_LOCALTIME_NOW; // populate now and timeinfo
 
   // Power up the modem (take it out of airplane / low-power mode, or whatever's needed)
-  bool init_success = modem_on();
+  //bool init_success = modem_on();
+  imei = modem_on_get_imei();
 
   // Get our modem identification
-  String imei_base64 = modem_get_IMEI_base64();
+  String imei_base64 = _int64_to_base64(imei);
+  //String imei_base64 = modem_get_IMEI_base64();
 
   // Get the battery level
   Serial.println("Reading battery level...");
@@ -453,17 +458,6 @@ void doSendSMS()
       } else {
         Serial.println("Data sent successfully via GPRS");
       }
-    }
-
-    // Disconnect from GPRS
-    gprs_success = gprs_disconnect();
-
-    if (!gprs_success)
-    {
-      Serial.println("Failed to disconnect from GPRS");
-      logError(ERROR_GPRS_FAIL); // , "Failed to disconnect from GPRS");
-    } else {
-      Serial.println("Disconnected from GPRS");
     }
   }
 
@@ -712,6 +706,20 @@ void doDeepSleep(time_t nextWakeTime)
 
   // Calculate the time until the next wakeup time. Get current RTC time via gettimeofday()
   GET_LOCALTIME_NOW; // populate `now` and `timeinfo`
+
+  // Disconnect from GPRS if needed
+  if (WATERPAL_USE_GPRS)
+  {
+    int gprs_success = gprs_disconnect();
+
+    if (!gprs_success)
+    {
+      Serial.println("Failed to disconnect from GPRS");
+      logError(ERROR_GPRS_FAIL); // , "Failed to disconnect from GPRS");
+    } else {
+      Serial.println("Disconnected from GPRS");
+    }
+  }
 
   // Shut off the modem (TODO: Perhaps only put it into sleep / low-power mode?)
   modem_off();

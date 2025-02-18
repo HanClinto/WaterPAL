@@ -20,8 +20,17 @@ const int port = 443;
 TinyGsmClientSecure client(modem);
 HttpClient http(client, server, port);
 
+int gprs_connected = 0;
+
 int gprs_connect()
 {
+  // Don't connect twice
+  if (gprs_connected)
+  {
+    Serial.println(F("GPRS already connected"));
+    return 1;
+  }
+
   Serial.println(F("GPRS connecting..."));
   if (!modem.waitForNetwork(600000L))
   {
@@ -36,7 +45,7 @@ int gprs_connect()
     Serial.println(F("Network failed to connect"));
     return 0;
   }
-
+  gprs_connected = 1;
   Serial.println(F("GPRS connected"));
 
   // Set CNACT=1
@@ -55,6 +64,13 @@ int gprs_connect()
 
 int gprs_disconnect()
 {
+  // Don't disconnect twice
+  if (!gprs_connected)
+  {
+    Serial.println(F("GPRS already disconnected"));
+    return 1;
+  }
+  
   Serial.println(F("GPRS disconnecting..."));
   if (!modem.gprsDisconnect())
   {
@@ -62,6 +78,7 @@ int gprs_disconnect()
     return 0;
   }
   Serial.println(F("GPRS disconnected"));
+  gprs_connected = 0;
   return 1;
 }
 
