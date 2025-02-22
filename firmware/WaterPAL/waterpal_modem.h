@@ -13,6 +13,7 @@
 // Powering down the modem
 
 int64_t modem_get_IMEI();
+int modem_clear_buffer();
 
 static bool _modem_is_on = false; // 0 = off, 1 = on
 
@@ -80,6 +81,7 @@ int64_t modem_on_get_imei()
 
   bool success = false;
 
+  // Start out without doing a full restart
   bool full_restart = false;
 
   // Start the modem
@@ -103,6 +105,8 @@ int64_t modem_on_get_imei()
         Serial.println("Modem initialized");
       }
     }
+    // If we failed to initialize the modem, we should try a full restart next time
+    full_restart = true;
 
     _imei = modem_get_IMEI();
 
@@ -118,11 +122,9 @@ int64_t modem_on_get_imei()
       Serial.println("Failed to get IMEI, retrying...");
       // Wait a bit
       delay(1000);
-      // Clear our modem input buffer
-      while (SerialAT.available())
-      {
-        SerialAT.read();
-      }
+      // Clear our buffer
+      modem_clear_buffer();
+      // Try again
       _imei = modem_get_IMEI();
     }
 
@@ -204,6 +206,18 @@ int8_t modem_get_signal_quality()
   Serial.println("Signal quality: " + String(csq) + "%");
 
   return csq;
+}
+
+// Clear the input buffer and return the number of bytes cleared
+int modem_clear_buffer()
+{
+  int bytes_cleared = 0;
+  while (SerialAT.available())
+  {
+    SerialAT.read();
+    bytes_cleared++;
+  }
+  return bytes_cleared;
 }
 
 String modem_get_cpsi()
