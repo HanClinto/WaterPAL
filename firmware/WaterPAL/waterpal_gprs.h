@@ -31,8 +31,9 @@ int gprs_connect()
     return 1;
   }
 
+  // Wait a maximum of 1 minute to connect to the network
   Serial.println(F("GPRS connecting..."));
-  if (!modem.waitForNetwork(600000L))
+  if (!modem.waitForNetwork(60L * 1000L))
   {
     Serial.println(F("Failed to wait for network"));
     return 0;
@@ -106,6 +107,9 @@ int gprs_send_data_weekly(String imei, int totalSMSCount, float GPSLat, float GP
 
   Serial.print(F("Requesting URL: "));
   Serial.println(url);
+
+  // Set our device timeout
+  http.setHttpResponseTimeout(WATERPAL_HTTP_TIMEOUT_MS)
 
   // Send the request
   int err = http.get(url);
@@ -212,6 +216,9 @@ int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime
 
   Serial.print(F("Requesting URL: "));
   Serial.println(url);
+
+  // Set our device timeout
+  http.setHttpResponseTimeout(WATERPAL_HTTP_TIMEOUT_MS)
 
   // Send the request
   int err = http.get(url);
