@@ -109,7 +109,7 @@ int gprs_send_data_weekly(String imei, int totalSMSCount, float GPSLat, float GP
   Serial.println(url);
 
   // Set our device timeout
-  http.setHttpResponseTimeout(WATERPAL_HTTP_TIMEOUT_MS)
+  http.setHttpResponseTimeout(WATERPAL_HTTP_TIMEOUT_MS);
 
   // Send the request
   int err = http.get(url);
@@ -218,7 +218,7 @@ int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime
   Serial.println(url);
 
   // Set our device timeout
-  http.setHttpResponseTimeout(WATERPAL_HTTP_TIMEOUT_MS)
+  http.setHttpResponseTimeout(WATERPAL_HTTP_TIMEOUT_MS);
 
   // Send the request
   int err = http.get(url);
