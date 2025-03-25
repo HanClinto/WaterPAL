@@ -399,11 +399,11 @@ void doSendSMS()
 
   // Get the battery level
   Serial.println("Reading battery level...");
-  batteryInfo batt_val = modem_get_batt_val(); //  Get battery value from modem
+  batteryInfo batt_val = modem_get_batt_val_retry(); //  Get battery value from modem
   Serial.println( "Battery level: charge status: " + String(batt_val.charging) + " percentage: " + String(batt_val.percentage) + " mV: " + String(batt_val.voltage_mV));
 
   // Get the signal quality
-  int8_t signal_quality = modem_get_signal_quality();
+  int8_t signal_quality = modem_get_signal_quality_retry();
   Serial.println("Signal quality: " + String(signal_quality) + "%");
 
   Serial.println("  >> Sending SMS with water usage time: " + String(total_water_usage_time_s) + " seconds");
@@ -544,9 +544,9 @@ void doReadExtraSensors() {
   sensors_setup();
 
   // Read humidity
-  float humidity = sensors_read_humidity();
+  float humidity = sensors_read_humidity_retry();
   // Read temperature as Celsius (the default)
-  float temp_c = sensors_read_temp_c();
+  float temp_c = sensors_read_temp_c_retry();
 
   // Print sensor readings (to 2 decimal places)
   Serial.println("   > Sensor reading: " + String(extra_sensor_read_count) + ":  Humidity: " + String(humidity, 2) + "%, Temp: " + String(temp_c, 2) + "°C");

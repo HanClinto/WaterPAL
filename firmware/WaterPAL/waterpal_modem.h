@@ -119,11 +119,11 @@ int64_t modem_on_get_imei()
         success = true;
         break;
       }
-      Serial.println("Failed to get IMEI, retrying...");
       // Wait a bit
-      delay(1000);
+      delay(100);
       // Clear our buffer
-      modem_clear_buffer();
+      int bytes_cleared = modem_clear_buffer();
+      Serial.println("Failed to get IMEI. Cleared " + String(bytes_cleared) + " bytes from buffer. Retrying...");
       // Try again
       _imei = modem_get_IMEI();
     }
@@ -191,6 +191,25 @@ batteryInfo modem_get_batt_val()
   return battInfo;
 }
 
+batteryInfo modem_get_batt_val_retry() {
+  batteryInfo battInfo;
+  for (int i = 0; i < 10; i++)
+  {
+    battInfo = modem_get_batt_val();
+    // Percentage should be between 0 and 100, but let's be safe and check for 0-1000
+    if (battInfo.percentage > 0 && battInfo.percentage < 1000)
+    {
+      return battInfo;
+    }
+    // Wait a bit
+    delay(100);
+    // Clear our buffer
+    int bytes_cleared = modem_clear_buffer();
+    Serial.println("Failed to get battery levels. Cleared " + String(bytes_cleared) + " bytes from buffer. Retrying...");
+  }
+  return battInfo;
+}
+
 int8_t modem_get_signal_quality()
 {
   Serial.println("\n---Getting Signal Quality---\n");
@@ -205,6 +224,25 @@ int8_t modem_get_signal_quality()
   csq = map(csq, 0, 31, 0, 100);
   Serial.println("Signal quality: " + String(csq) + "%");
 
+  return csq;
+}
+
+int8_t modem_get_signal_quality_retry()
+{
+  int8_t csq = 0;
+  for (int i = 0; i < 10; i++)
+  {
+    csq = modem_get_signal_quality();
+    if (csq > 0)
+    {
+      return csq;
+    }
+    // Wait a bit
+    delay(100);
+    // Clear our buffer
+    int bytes_cleared = modem_clear_buffer();
+    Serial.println("Failed to get signal quality. Cleared " + String(bytes_cleared) + " bytes from buffer. Retrying...");
+  }
   return csq;
 }
 
