@@ -40,4 +40,27 @@ bool parseTimestamp(const String& timestamp, struct tm& timeinfo, int16_t& quart
     return true;
 }
 
+// Function to convert timeval to ISO 8601 format string
+String timevalToISO8601(struct timeval tv) {
+  char buffer[30];
+  
+  // Convert seconds to a time structure
+  time_t nowtime = tv.tv_sec;
+  struct tm *nowtm = gmtime(&nowtime);
+  
+  // Format the date and time including milliseconds
+  // Format: YYYY-MM-DDThh:mm:ssZ
+  strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%S", nowtm);
+  
+  // Return as a String
+  return String(buffer) + "Z";
+  
+  // If you need milliseconds precision, uncomment these lines:
+  /*
+  char millisec[5];
+  sprintf(millisec, ".%03d", (int)(tv.tv_usec / 1000));
+  return String(buffer) + String(millisec) + "Z";
+  */
+}
+
 #endif // WATERPAL_CLOCK_H

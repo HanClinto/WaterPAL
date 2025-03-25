@@ -71,6 +71,8 @@ Note: you can only use pins that are RTC GPIOs with this wake-up source. Here’
 #define WATERPAL_FLOAT_SWITCH_INPUT_PIN GPIO_NUM_34
 #define WATERPAL_DHTPIN 32
 
+#define WATERPAL_LITERS_PER_HR 950 // The number of liters transferred in 1 hour of water usage
+
 #define NUM_EXTRA_SENSORS 2 // The number of extra sensors to read. Here, we have a humidity and temperature sensor.
 #define NUM_EXTRA_SENSOR_READS_PER_DAY 24 // How many readings do we want to log per day? Here, we log every hour.
 

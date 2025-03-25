@@ -14,7 +14,7 @@
 #include <TinyGsmClient.h>
 
 // Server details
-const char server[] = "script.google.com";
+const char server[] = "devdo-ulcs.bridgetreedcc.com";
 const int port = 443;
 
 TinyGsmClientSecure client(modem);
@@ -256,6 +256,112 @@ int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime
     return 0;
   }
 
+
+  int length = http.contentLength();
+  if (length >= 0) {
+    Serial.print(F("Content length is: "));
+    Serial.println(length);
+  }
+  if (http.isResponseChunked()) {
+    Serial.println(F("The response is chunked"));
+  }
+
+  String body = http.responseBody();
+  Serial.println(F("Response:"));
+  Serial.println(body);
+
+  Serial.print(F("Body length is: "));
+  Serial.println(body.length());
+
+  // Close the connection
+  http.stop();
+  Serial.println(F("Server disconnected"));
+
+  return 1;
+}
+
+int gprs_post_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime, int detectedClockTimeDrift, int temperatureLow, int temperatureAvg, int temperatureHigh, int humidityLow, int humidityAvg, int humidityHigh, int signalStrength, int batteryChargeStatus, int batteryChargePercent, float batteryVoltage, int bootCount)
+{
+  // Get the time of the request
+  timeval tv;
+  gettimeofday(&tv, NULL);
+  String time_iso8601 = timevalToISO8601(tv);
+
+  // NOTE: Convert liters per hour into gallons per day.
+  // 1 liter = 0.264172 gallons
+  // dailyWaterUsageTime is in seconds
+  // Assuming 950 liters is transferred in 1 hr of water usage, convert to total gallons for the day's usage
+  float gallons = ((dailyWaterUsageTime * WATERPAL_LITERS_PER_HR) * 0.264172) / 3600;
+  
+  // Create the JSON payload
+  String jsonPayload = "{";
+  jsonPayload += "\"sensor_id\": \"" + imei + "\",";
+  jsonPayload += "\"Imei_number\": \"" + imei + "\",";
+  
+  jsonPayload += "\"timestamp\": \"" + time_iso8601 + "\",";
+  
+  jsonPayload += "\"daily_water_usage_second\": " + String(dailyWaterUsageTime) + ",";
+  jsonPayload += "\"battery_voltage\": " + String(batteryVoltage) + ",";
+  jsonPayload += "\"gallons\": " + String(gallons) + ",";
+  jsonPayload += "\"period\": \"24 Hours\",";
+  jsonPayload += "\"boot_count\": \"" + String(bootCount) + "\",";
+  jsonPayload += "\"battery_charge\": \"" + String(batteryChargePercent) + "\",";
+  jsonPayload += "\"signal_strength\": \"" + String(signalStrength) + "\",";
+  jsonPayload += "\"humid\": \"" + String(humidityAvg) + "\",";  // Using avg humidity as the example only has one field
+  jsonPayload += "\"temperature\": \"" + String(temperatureAvg) + "\",";  // Using avg temperature
+  jsonPayload += "\"detected_clock\": \"" + String(detectedClockTimeDrift) + "\",";
+  jsonPayload += "\"total_sms_count\": \"" + String(totalSMSCount) + "\"";
+  jsonPayload += "}";
+
+  Serial.println(F("Prepared JSON payload:"));
+  Serial.println(jsonPayload);
+
+  // Define the endpoint URL (without query parameters now)
+  String url = "/ulcs/usagedata";
+  
+  Serial.print(F("Requesting POST to URL: "));
+  Serial.println(url);
+
+  // Set our device timeout
+  http.setHttpResponseTimeout(WATERPAL_HTTP_TIMEOUT_MS);
+  
+  // Add authentication header
+  http.beginRequest();
+  http.post(url);
+  http.sendHeader("Content-Type", "application/json");
+  http.sendHeader("Authentication", "06de77e470572051a330c3b9203a4d12");
+  http.sendHeader("Content-Length", jsonPayload.length());
+  
+  // Send the JSON payload
+  http.beginBody();
+  http.print(jsonPayload);
+  http.endRequest();
+
+  // Read the status code and body of the response
+  int status = http.responseStatusCode();
+  Serial.print(F("Response status code: "));
+  Serial.println(status);
+  if (!status)
+  {
+    delay(10000);
+    return 0;
+  }
+
+  Serial.println(F("Response Headers:"));
+  while (http.headerAvailable())
+  {
+    String headerName = http.readHeaderName();
+    String headerValue = http.readHeaderValue();
+    Serial.println("    " + headerName + " : " + headerValue);
+  }
+
+  // Accept 200 or 201 as a valid response code for POST
+  if (status != 200 && status != 201)
+  {
+    Serial.print(F("HTTP POST returned invalid response code: "));
+    Serial.println(status);
+    return 0;
+  }
 
   int length = http.contentLength();
   if (length >= 0) {
