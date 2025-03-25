@@ -120,7 +120,7 @@ int64_t modem_on_get_imei()
         break;
       }
       // Wait a bit
-      delay(100);
+      delay(1000);
       // Clear our buffer
       int bytes_cleared = modem_clear_buffer();
       Serial.println("Failed to get IMEI. Cleared " + String(bytes_cleared) + " bytes from buffer. Retrying...");
@@ -202,7 +202,7 @@ batteryInfo modem_get_batt_val_retry() {
       return battInfo;
     }
     // Wait a bit
-    delay(100);
+    delay(1000);
     // Clear our buffer
     int bytes_cleared = modem_clear_buffer();
     Serial.println("Failed to get battery levels. Cleared " + String(bytes_cleared) + " bytes from buffer. Retrying...");
@@ -238,7 +238,7 @@ int8_t modem_get_signal_quality_retry()
       return csq;
     }
     // Wait a bit
-    delay(100);
+    delay(1000);
     // Clear our buffer
     int bytes_cleared = modem_clear_buffer();
     Serial.println("Failed to get signal quality. Cleared " + String(bytes_cleared) + " bytes from buffer. Retrying...");
