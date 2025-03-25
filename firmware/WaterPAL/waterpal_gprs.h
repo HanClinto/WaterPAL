@@ -31,6 +31,11 @@ int gprs_connect()
     return 1;
   }
 
+  int bytes_cleared = modem_clear_buffer();
+  if (bytes_cleared > 0) {
+    Serial.println("Cleared " + String(bytes_cleared) + " bytes from buffer prior to GPRS connect.");
+  }
+
   // Wait a maximum of 1 minute to connect to the network
   Serial.println(F("GPRS connecting..."));
   if (!modem.waitForNetwork(60L * 1000L))

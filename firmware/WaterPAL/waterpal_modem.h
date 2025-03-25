@@ -272,6 +272,11 @@ String modem_get_cpsi()
     Serial.println(">> No network parameters found");
   }
 
+  int bytes_cleared = modem_clear_buffer();
+  if (bytes_cleared > 0) {
+    Serial.println("Cleared " + String(bytes_cleared) + " bytes from buffer after querying network parameters.");
+  }
+
   return cpsi;
 }
 
