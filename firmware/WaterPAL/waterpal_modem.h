@@ -590,6 +590,12 @@ bool modem_get_gps(struct gpsInfo& gps, uint32_t timeout_s = 60)
     Serial.println("GPS data received successfully in " + String(gps_now.tv_sec - gps_start.tv_sec) + " seconds");
   }
 
+  int bytes_cleared = modem_clear_buffer();
+  if (bytes_cleared > 0) {
+    Serial.println("GPS: Cleared " + String(bytes_cleared) + " bytes from buffer after GPS read.");
+  }
+
+
   return success;
 }
 
@@ -603,6 +609,11 @@ bool modem_gps_off()
   if (modem.waitResponse(10000L) != 1)
   {
     DBG("Set GPS Power LOW Failed");
+  }
+
+  int bytes_cleared = modem_clear_buffer();
+  if (bytes_cleared > 0) {
+    Serial.println("GPS: Cleared " + String(bytes_cleared) + " bytes from buffer after GPS shutdown.");
   }
 
   return success;
