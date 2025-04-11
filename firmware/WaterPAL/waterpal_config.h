@@ -69,6 +69,7 @@ Note: you can only use pins that are RTC GPIOs with this wake-up source. Here’
     ESP32-S2: 0-21;
 */
 #define WATERPAL_FLOAT_SWITCH_INPUT_PIN GPIO_NUM_34
+#define WATERPAL_FLOAT_SWITCH_INVERT false // Set to true to invert the input pin value
 #define WATERPAL_DHTPIN 32
 
 #define NUM_EXTRA_SENSORS 2 // The number of extra sensors to read. Here, we have a humidity and temperature sensor.

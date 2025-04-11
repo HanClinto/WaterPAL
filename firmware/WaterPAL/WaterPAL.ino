@@ -141,7 +141,7 @@ void setup()
   else if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0)
   {
     // If it's waking up from deep sleep due to an edge on the water sensor input, determine which edge it is.
-    if (input_pin_value == HIGH)
+    if (input_pin_value == !WATERPAL_FLOAT_SWITCH_INVERT)
     {
       // If it's waking up from deep sleep due to a rising edge on the water sensor input pin, then log the current time of the rising edge, and go back into deep sleep.
       doLogRisingEdge();
@@ -735,7 +735,7 @@ void doDeepSleep(time_t nextWakeTime)
   int triggerOnEdge = 1; // Default to triggering on a rising edge.
 
   // If we're currently tracking a rising edge, then configure to trigger on a falling edge instead.
-  if (last_rising_edge_time_s > 0)
+  if (input_pin_value == HIGH)
   {
     triggerOnEdge = 0;
     Serial.println("  Configuring trigger for falling edge");
