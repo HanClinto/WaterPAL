@@ -27,6 +27,7 @@ const char WATERPAL_GPRS_PASS[] = "";
 // The max time to wait for a response from the server
 // NOTE: There may be a bug with this -- need to test more: https://github.com/arduino-libraries/ArduinoHttpClient/issues/154
 const uint32_t WATERPAL_HTTP_TIMEOUT_MS = 60 * 1000;
+#define WATERPAL_HTTP_RETRY_CNT 3 // How many times to retry sending an HTTP request
 
 // WATERPAL_USE_GPS: Whether or not to use the GPS module to get the device's location.
 //  If set to true, the device will attempt to get the GPS location and send it in an SMS message.
