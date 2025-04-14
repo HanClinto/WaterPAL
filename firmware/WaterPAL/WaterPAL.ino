@@ -36,8 +36,8 @@ TinyGsm modem(SerialAT);
 // All RTC_DATA_ATTR variables are persisted while the device is in deep sleep
 volatile RTC_DATA_ATTR int64_t bootCount = 0;
 volatile RTC_DATA_ATTR int64_t total_water_usage_time_s = 0; // Total time in seconds that the water pump has been in use
-volatile RTC_DATA_ATTR int64_t last_rising_edge_time_s = 0;  // Seconds since epoch of the last rising edge
-
+volatile RTC_DATA_ATTR int     last_water_sensor_value = 0; // Last value of the water sensor input
+volatile RTC_DATA_ATTR int64_t last_water_sensor_edge_time_s = 0; // Seconds since epoch of the last water sensor edge (whether rising or falling)
 volatile RTC_DATA_ATTR int64_t total_sms_send_count = 0; // Total number of SMS messages sent
 
 volatile RTC_DATA_ATTR int64_t last_sms_send_time_s = 0;         // Seconds since epoch of the last SMS send time
@@ -52,7 +52,7 @@ volatile RTC_DATA_ATTR int extra_sensor_read_count = 0;
 volatile RTC_DATA_ATTR int64_t last_time_drift_val_s = 0; // Time drift in seconds at the last check
 
 // The current value of the input pin
-int input_pin_value = 0;
+int water_sensor_value = 0;
 
 //  GPS lat/lon
 float lat;
@@ -117,9 +117,9 @@ void setup()
 
   // Democratically vote for the value of the input pin.
   //  If we have a majority of readings that are HIGH, then set the input pin value to HIGH. If we have a majority of readings that are LOW, then set the input pin value to LOW.
-  input_pin_value = (totalReading * 2 > NUM_READS);
+  water_sensor_value = (totalReading * 2 > NUM_READS);
 
-  Serial.println("  Current input pin value: " + String(input_pin_value));
+  Serial.println("  Current input pin value: " + String(water_sensor_value));
 
   if (totalReading > 0 && totalReading < NUM_READS)
   {
@@ -133,43 +133,45 @@ void setup()
   Serial.println("  Wakeup reason: " + String(wakeup_reason));
 
   // If it's powering on for the first time, then do all of our initialization
-  if (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED || (total_sms_send_count % 8 == 0))
+  if (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED)
   {
-    bool doSetNetworkMode = (bootCount == 1);
-    doExtendedSelfCheck(doSetNetworkMode);
+    // Note that we have to do this first, because without it, we don't have a valid clock for measuring any other timings.
+    // Only set our network mode on our first bootup
+    doExtendedSelfCheck(true);
   }
   else if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0)
   {
-    // If it's waking up from deep sleep due to an edge on the water sensor input, determine which edge it is.
-    if (input_pin_value == !WATERPAL_FLOAT_SWITCH_INVERT)
-    {
-      // If it's waking up from deep sleep due to a rising edge on the water sensor input pin, then log the current time of the rising edge, and go back into deep sleep.
-      doLogRisingEdge();
-    }
-    else
-    {
-      // If it's waking up from deep sleep due to a falling edge on the water sensor input pin, then log the current time of the falling edge, calculate the time span between the rising and falling edges, and add that time span to our day's total accumulation. Then go back into deep sleep.
-      doLogFallingEdge();
-    }
+    Serial.println("   Waking up from water input pin");
   }
   else if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER)
   {
-    Serial.println("  Waking up from timer");
+    Serial.println("   Waking up from timer");
   }
 
-  // Even if we woke up for a rising edge, we should still check to see if it's time to send an SMS.
+  // No matter why we woke up, attempt to log our water usage time.
+  doLogWaterInput();
+  last_water_sensor_value = water_sensor_value;
+
+  // Now that the time-critical things are done (logging the water input), then we can see if it's time to do an extended self-check.
+  if (wakeup_reason != ESP_SLEEP_WAKEUP_UNDEFINED && (total_sms_send_count % 8 == 0))
+  {
+    // If we are not waking up for the first time, then we can do an extended self-check, but don't set the network mode again.
+    doExtendedSelfCheck(false);
+  }
+
+  // No matter why we woke up, always check to see if it's time to send an SMS.
 
   // Check to see if we've received any SMS
   String incoming_sms = modem_read_sms();
   if (incoming_sms.length() > 0)
   {
     Serial.println("Received SMS: '" + incoming_sms + "'");
+    // TODO: Do something with the received SMS (apply reconfiguration, etc)
   }
 
   // No matter how we woke up, always go back to sleep at the end.
   doTimeChecks();
 }
-
 
 // We only do an extended self-check every X boots, to save power.
 void doExtendedSelfCheck(bool doSetNetworkMode = false)
@@ -340,54 +342,37 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
   }
 }
 
-void doLogRisingEdge()
-{
-  Serial.println("doLogRisingEdge()");
-
-  // Log the current time of the rising edge, and go back into deep sleep.
-  GET_LOCALTIME_NOW; // populate now and timeinfo
-
-  last_rising_edge_time_s = now;
-
-  Serial.println("  Rising edge detected at " + String(timeinfo.tm_hour) + ":" + String(timeinfo.tm_min) + ":" + String(timeinfo.tm_sec));
-}
-
-void doLogFallingEdge()
+void doLogWaterInput()
 {
   Serial.println("doLogFallingEdge()");
-  // Log the current time of the falling edge, calculate the time span between the rising and falling edges, and add that time span to our day's total accumulation. Then go back into deep sleep.
-  GET_LOCALTIME_NOW; // populate now and timeinfo
 
-  if (last_rising_edge_time_s == 0)
-  { //  only zero if falling edge
-    Serial.println(">>> WARNING: No rising edge time logged! Invalid reading (noise in the line, or switch triggered too quickly?)");
-  }
-  else
-  {
-    time_t then = last_rising_edge_time_s; // get start time
-    struct tm then_timeinfo;
-    localtime_r(&then, &then_timeinfo); // turn into hr, min
-    Serial.println("  Rising edge was detected at " + String(then_timeinfo.tm_hour) + ":" + String(then_timeinfo.tm_min) + ":" + String(then_timeinfo.tm_sec));
+  // If we detect an edge (whether rising or falling), track how much time delta there was.
+  if (water_sensor_value != last_water_sensor_value) {
+    GET_LOCALTIME_NOW; // populate now and timeinfo
 
-    int64_t time_diff_s = (tv.tv_sec - last_rising_edge_time_s); //  subtract start from now elapsed
-
-    //  Check for negative time differences (noise in the line, or switch triggered too quickly?)
+    int64_t time_diff_s = tv.tv_sec - last_water_sensor_edge_time_s; //  subtract start from now elapsed
+    Serial.println("  Time delta: " + String(time_diff_s) + " seconds");
     if (time_diff_s < 0)
     {
       Serial.println(">>> WARNING: Negative time difference detected -- invalid reading (noise in the line, or switch triggered too quickly?)");
-      Serial.println("  Time difference: " + String(time_diff_s) + " seconds");
       // Set the time difference to zero to "ratchet" so that we can't actually count downwards.
       time_diff_s = 0;
     }
 
-    total_water_usage_time_s += time_diff_s;
+    // Log water usage time of falling edges (when WATERPAL_FLOAT_SWITCH_INVERT is false)
+    // Log water usage time of rising edges (when WATERPAL_FLOAT_SWITCH_INVERT is true)
+    if (water_sensor_value == WATERPAL_FLOAT_SWITCH_INVERT)
+    {
+      // Only log water usage time if the water sensor is in the "on" state (whatever that is -- configured by WATERPAL_FLOAT_SWITCH_INVERT)
+      total_water_usage_time_s += time_diff_s;
+    }
 
-    // Reset our last rising edge time to zero
-    last_rising_edge_time_s = 0; //  reset clock to zero
-
-    Serial.println("  Falling edge detected at " + String(timeinfo.tm_hour) + ":" + String(timeinfo.tm_min) + ":" + String(timeinfo.tm_sec));
-    Serial.println("  Time difference: " + String(time_diff_s) + " seconds");
+    Serial.println("  Edge detected at " + String(timeinfo.tm_hour) + ":" + String(timeinfo.tm_min) + ":" + String(timeinfo.tm_sec));
+    Serial.println("  Water input sensor was " + String(!water_sensor_value) + " for " + String(time_diff_s) + " seconds");
     Serial.println("  Total water usage time: " + String(total_water_usage_time_s) + " seconds");
+
+    // Log the time of the edge
+    last_water_sensor_edge_time_s = tv.tv_sec; //  reset clock to zero
   }
 }
 
@@ -752,7 +737,7 @@ void doDeepSleep(time_t nextWakeTime)
   int triggerOnEdge = 1; // Default to triggering on a rising edge.
 
   // If we're currently tracking a rising edge, then configure to trigger on a falling edge instead.
-  if (input_pin_value == HIGH)
+  if (water_sensor_value == HIGH)
   {
     triggerOnEdge = 0;
     Serial.println("  Configuring trigger for falling edge");
