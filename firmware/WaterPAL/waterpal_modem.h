@@ -305,7 +305,7 @@ String _int64_to_base64(int64_t val)
 {
   // Ex: 869951037053562 -> "DFzdCiRp6"
   // Base64 encoding
-  const char *b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const char *b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_."; // NOTE: URLs don't like + or /, so change to _. for our purposes
   String res = "";
   while (val > 0)
   {
@@ -318,7 +318,7 @@ String _int64_to_base64(int64_t val)
 int64_t _base64_to_int64(const String& b64_str)
 {
   // Base64 decoding
-  const char *b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const char *b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_."; // NOTE: URLs don't like + or /, so change to _. for our purposes
   int64_t val = 0;
   for (int i = 0; i < b64_str.length(); i++)
   {
