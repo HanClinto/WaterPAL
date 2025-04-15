@@ -17,15 +17,16 @@
 const char server[] = "script.google.com";
 const int port = 443;
 
-TinyGsmClientSecure client(modem);
+TinyGsmClientSecure client(modem, 0);
 HttpClient http(client, server, port);
 
 #if WATERPAL_USE_DESIGNOUTREACH_HTTP
 // Server details for Design Outreach servers
 const char server_designoutreach[] = "devdo-ulcs.bridgetreedcc.com";
-const int port_designoutreach = 443;
+const int port_designoutreach = 80;
 
-TinyGsmClientSecure client_designoutreach(modem);
+// NOTE: "To have more than one client of any type, you need to create them on different sockets." c.f. https://github.com/vshymanskyy/TinyGSM/issues/292#issuecomment-496014840
+TinyGsmClient client_designoutreach(modem, 1);
 HttpClient http_designoutreach(client_designoutreach, server_designoutreach, port_designoutreach);
 #endif
 
@@ -143,9 +144,9 @@ int gprs_send_data_weekly(String imei, int totalSMSCount, float GPSLat, float GP
   int status = http.responseStatusCode();
   Serial.print(F("Response status code: "));
   Serial.println(status);
-  if (!status)
+  if (status < 0)
   {
-    Serial.println(F("No response from server. Waiting and trying again..."));
+    Serial.println("Response " + String(status) + " from server. Waiting and trying again...");
     delay(1000);
     return 0;
   }
@@ -154,8 +155,11 @@ int gprs_send_data_weekly(String imei, int totalSMSCount, float GPSLat, float GP
   while (http.headerAvailable())
   {
     String headerName = http.readHeaderName();
-    String headerValue = http.readHeaderValue();
-    Serial.println("    " + headerName + " : " + headerValue);
+    if (http.headerAvailable())
+    {
+      String headerValue = http.readHeaderValue();
+      Serial.println("    " + headerName + " : " + headerValue);
+    }
   }
 
   // Accept 200 or 302 as a valid response code.
@@ -253,9 +257,9 @@ int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime
   int status = http.responseStatusCode();
   Serial.print(F("Response status code: "));
   Serial.println(status);
-  if (!status)
+  if (status < 0)
   {
-    Serial.println(F("No response from server. Waiting and trying again..."));
+    Serial.println("Response " + String(status) + " from server. Waiting and trying again...");
     delay(1000);
     return 0;
   }
@@ -264,8 +268,11 @@ int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime
   while (http.headerAvailable())
   {
     String headerName = http.readHeaderName();
-    String headerValue = http.readHeaderValue();
-    Serial.println("    " + headerName + " : " + headerValue);
+    if (http.headerAvailable())
+    {
+      String headerValue = http.readHeaderValue();
+      Serial.println("    " + headerName + " : " + headerValue);
+    }
   }
 
   // Accept 200 or 302 as a valid response code.
@@ -300,6 +307,7 @@ int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime
   return 1;
 }
 
+#define WATERPAL_USE_DESIGNOUTREACH_HTTP true
 #if WATERPAL_USE_DESIGNOUTREACH_HTTP
 
 const char header_a[] = { 0x30, 0x36, 0x64, 0x65, 0x37, 0x37, 0x65, 0x34, 0x37, 0x30, 0x35, 0x37, 0x32, 0x30, 0x35, 0x31, 0x61, 0x33, 0x33, 0x30, 0x63, 0x33, 0x62, 0x39, 0x32, 0x30, 0x33, 0x61, 0x34, 0x64, 0x31, 0x32, 0x00 };
@@ -363,21 +371,24 @@ int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dail
 
   // Read the status code and body of the response
   int status = http_designoutreach.responseStatusCode();
-  Serial.print(F("Response status code: "));
+  Serial.print("Response status code: ");
   Serial.println(status);
-  if (!status)
+  if (status < 0)
   {
-    Serial.println(F("No response from server. Waiting and trying again..."));
+    Serial.println("Response " + String(status) + " from server. Waiting and trying again...");
     delay(1000);
     return 0;
   }
 
-  Serial.println(F("Response Headers:"));
+  Serial.println("Response Headers:");
   while (http_designoutreach.headerAvailable())
   {
     String headerName = http_designoutreach.readHeaderName();
-    String headerValue = http_designoutreach.readHeaderValue();
-    Serial.println("    " + headerName + " : " + headerValue);
+    if (http_designoutreach.headerAvailable())
+    {
+      String headerValue = http_designoutreach.readHeaderValue();
+      Serial.println("    " + headerName + " : " + headerValue);
+    }
   }
 
   // Accept 200 or 201 as a valid response code for POST
