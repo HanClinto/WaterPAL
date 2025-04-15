@@ -305,7 +305,7 @@ String _int64_to_base64(int64_t val)
 {
   // Ex: 869951037053562 -> "DFzdCiRp6"
   // Base64 encoding
-  const char *b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_."; // NOTE: URLs don't like + or /, so change to _. for our purposes
+  const char *b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"; // NOTE: URLs don't like + or /, so change to _. for our purposes
   String res = "";
   while (val > 0)
   {
@@ -318,7 +318,7 @@ String _int64_to_base64(int64_t val)
 int64_t _base64_to_int64(const String& b64_str)
 {
   // Base64 decoding
-  const char *b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_."; // NOTE: URLs don't like + or /, so change to _. for our purposes
+  const char *b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"; // NOTE: URLs don't like + or /, so change to _. for our purposes
   int64_t val = 0;
   for (int i = 0; i < b64_str.length(); i++)
   {
@@ -455,14 +455,14 @@ bool modem_broadcast_sms(const String& message, const int num_retries = 10)
     {
       if (modem.sendSMS(WATERPAL_DEST_PHONE_NUMBERS[i], message))
       {
-        Serial.println(" SMS message sent successfully to number [" + String(i) + "]");
+        Serial.println(" SMS message sent successfully to number " + String(WATERPAL_DEST_PHONE_NUMBERS[i]) + " [" + String(i) + "]");
         break;
       }
       retry_cnt++;
 
       int signal_quality = modem_get_signal_quality();
 
-      Serial.println(" Failed to send SMS message to number [" + String(i) + "]. Signal quality: " + String(signal_quality) + ". Retrying... (attempt " + String(retry_cnt) + " of " + String(num_retries) + ")");
+      Serial.println(" Failed to send SMS message to number " + String(WATERPAL_DEST_PHONE_NUMBERS[i]) + " [" + String(i) + "]. Signal quality: " + String(signal_quality) + ". Retrying... (attempt " + String(retry_cnt) + " of " + String(num_retries) + ")");
 
       delay(1000);
     }
