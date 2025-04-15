@@ -29,6 +29,9 @@ const char WATERPAL_GPRS_PASS[] = "";
 const uint32_t WATERPAL_HTTP_TIMEOUT_MS = 60 * 1000;
 #define WATERPAL_HTTP_RETRY_CNT 3 // How many times to retry sending an HTTP request
 
+#define WATERPAL_USE_DESIGNOUTREACH_HTTP true // Whether or not to send HTTP requests to the Design Outreach server in addition to the regular WaterPAL endpoint
+#define WATERPAL_LITERS_PER_HR 950 // The number of liters transferred in 1 hour of water usage. NOTE: Only needed for Design Outreach reporting.
+
 // WATERPAL_USE_GPS: Whether or not to use the GPS module to get the device's location.
 //  If set to true, the device will attempt to get the GPS location and send it in an SMS message.
 //  If set to false, the device will skip the GPS location step.

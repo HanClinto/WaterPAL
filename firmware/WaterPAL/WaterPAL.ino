@@ -333,7 +333,7 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
     sms_send_count_last_digit, // SMS count, limited to 1 digits
     // Body:
       cpsi.c_str());
-    
+
     // Ensure we're truncated to 14 characters
     sms_buffer[14] = '\0';
 
@@ -460,8 +460,47 @@ void doSendSMS()
         Serial.println("Failed to send daily data via GPRS. No more retries!");
         logError(ERROR_GPRS_FAIL); // , "Failed to send data via GPRS");
       }
+
+#if WATERPAL_USE_DESIGNOUTREACH_HTTP
+      Serial.println("Sending data via GPRS to DesignOutreach...");
+      for (int cnt = 0; cnt < WATERPAL_HTTP_RETRY_CNT; cnt++) {
+        gprs_success = gprs_post_data_daily_designoutreach(
+          imei_base64,
+          total_sms_send_count,
+          total_water_usage_time_s,
+          last_time_drift_val_s,
+          temp_min,
+          temp_avg,
+          temp_max,
+          humidity_min,
+          humidity_avg,
+          humidity_max,
+          signal_quality,
+          batt_val.charging,
+          batt_val.percentage,
+          batt_val.voltage_mV,
+          bootCount);
+
+        if (!gprs_success)
+        {
+          Serial.print("Failed to send daily data to Design Outreach via GPRS. Retry #");
+          Serial.println(cnt + 1);
+          logError(ERROR_GPRS_FAIL); // , "Failed to send data via GPRS");
+        } else {
+          Serial.println("Daily data sent successfully to Design Outreach via GPRS");
+          break;
+        }
+      }
+      if (!gprs_success)
+      {
+        Serial.println("Failed to send daily data to Design Outreach via GPRS. No more retries!");
+        logError(ERROR_GPRS_FAIL); // , "Failed to send data via GPRS");
+      }
     }
+#endif // WATERPAL_USE_DESIGNOUTREACH_HTTP
   }
+
+  // ******* SMS ********
 
   // Confirm that it sent correctly, and if so, clear the total water usage time.
   bool success = false;
@@ -531,7 +570,7 @@ void doSendSMS()
         batt_val.percentage,
         int(get_extra_sensor_avg(1) + 0.5f)
     );
-    
+
     // Ensure we're truncated to 14 characters
     sms_buffer[14] = '\0';
 

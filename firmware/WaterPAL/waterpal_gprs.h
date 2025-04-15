@@ -20,6 +20,15 @@ const int port = 443;
 TinyGsmClientSecure client(modem);
 HttpClient http(client, server, port);
 
+#if WATERPAL_USE_DESIGNOUTREACH_HTTP
+// Server details for Design Outreach servers
+const char server_designoutreach[] = "devdo-ulcs.bridgetreedcc.com";
+const int port_designoutreach = 443;
+
+TinyGsmClientSecure client_designoutreach(modem);
+HttpClient http_designoutreach(client_designoutreach, server_designoutreach, port_designoutreach);
+#endif
+
 int gprs_connected = 0;
 
 int gprs_connect()
@@ -64,6 +73,10 @@ int gprs_connect()
 
   Serial.println("Keeping connection alive...");
   http.connectionKeepAlive(); // Currently, this is needed for HTTPS
+
+  #if WATERPAL_USE_DESIGNOUTREACH_HTTP
+  http_designoutreach.connectionKeepAlive();
+  #endif // WATERPAL_USE_DESIGNOUTREACH_HTTP
 
   return 1;
 }
@@ -132,7 +145,8 @@ int gprs_send_data_weekly(String imei, int totalSMSCount, float GPSLat, float GP
   Serial.println(status);
   if (!status)
   {
-    delay(10000);
+    Serial.println(F("No response from server. Waiting and trying again..."));
+    delay(1000);
     return 0;
   }
 
@@ -241,7 +255,8 @@ int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime
   Serial.println(status);
   if (!status)
   {
-    delay(10000);
+    Serial.println(F("No response from server. Waiting and trying again..."));
+    delay(1000);
     return 0;
   }
 
@@ -284,5 +299,117 @@ int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime
 
   return 1;
 }
+
+#if WATERPAL_USE_DESIGNOUTREACH_HTTP
+
+const char header_a[] = { 0x30, 0x36, 0x64, 0x65, 0x37, 0x37, 0x65, 0x34, 0x37, 0x30, 0x35, 0x37, 0x32, 0x30, 0x35, 0x31, 0x61, 0x33, 0x33, 0x30, 0x63, 0x33, 0x62, 0x39, 0x32, 0x30, 0x33, 0x61, 0x34, 0x64, 0x31, 0x32, 0x00 };
+
+int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dailyWaterUsageTime, int detectedClockTimeDrift, int temperatureLow, int temperatureAvg, int temperatureHigh, int humidityLow, int humidityAvg, int humidityHigh, int signalStrength, int batteryChargeStatus, int batteryChargePercent, float batteryVoltage, int bootCount)
+{
+  // Get the time of the request
+  timeval tv;
+  gettimeofday(&tv, NULL);
+  String time_iso8601 = timevalToISO8601(tv);
+
+  // NOTE: Convert liters per hour into gallons per day.
+  // 1 liter = 0.264172 gallons
+  // dailyWaterUsageTime is in seconds
+  // Assuming 950 liters is transferred in 1 hr of water usage, convert to total gallons for the day's usage
+  float gallons = ((dailyWaterUsageTime * WATERPAL_LITERS_PER_HR) * 0.264172) / 3600;
+
+  // Create the JSON payload
+  String jsonPayload = "{";
+  jsonPayload += "\"sensor_id\": \"" + imei + "\",";
+  jsonPayload += "\"Imei_number\": \"" + imei + "\",";
+
+  jsonPayload += "\"timestamp\": \"" + time_iso8601 + "\",";
+
+  jsonPayload += "\"daily_water_usage_second\": " + String(dailyWaterUsageTime) + ",";
+  jsonPayload += "\"battery_voltage\": " + String(batteryVoltage) + ",";
+  jsonPayload += "\"gallons\": " + String(gallons) + ",";
+  jsonPayload += "\"period\": \"24 Hours\",";
+  jsonPayload += "\"boot_count\": \"" + String(bootCount) + "\",";
+  jsonPayload += "\"battery_charge\": \"" + String(batteryChargePercent) + "\",";
+  jsonPayload += "\"signal_strength\": \"" + String(signalStrength) + "\",";
+  jsonPayload += "\"humid\": \"" + String(humidityAvg) + "\",";  // Using avg humidity as the example only has one field
+  jsonPayload += "\"temperature\": \"" + String(temperatureAvg) + "\",";  // Using avg temperature
+  jsonPayload += "\"detected_clock\": \"" + String(detectedClockTimeDrift) + "\",";
+  jsonPayload += "\"total_sms_count\": \"" + String(totalSMSCount) + "\"";
+  jsonPayload += "}";
+
+  Serial.println(F("Prepared JSON payload:"));
+  Serial.println(jsonPayload);
+
+  // Define the endpoint URL (without query parameters now)
+  String url = "/ulcs/usagedata";
+
+  Serial.print(F("Requesting POST to URL: "));
+  Serial.println(url);
+
+  // Set our device timeout
+  http_designoutreach.setHttpResponseTimeout(WATERPAL_HTTP_TIMEOUT_MS);
+
+  // Add authentication header
+  http_designoutreach.beginRequest();
+  http_designoutreach.post(url);
+  http_designoutreach.sendHeader("Content-Type", "application/json");
+  http_designoutreach.sendHeader("Authentication", header_a);
+  http_designoutreach.sendHeader("Content-Length", jsonPayload.length());
+
+  // Send the JSON payload
+  http_designoutreach.beginBody();
+  http_designoutreach.print(jsonPayload);
+  http_designoutreach.endRequest();
+
+  // Read the status code and body of the response
+  int status = http_designoutreach.responseStatusCode();
+  Serial.print(F("Response status code: "));
+  Serial.println(status);
+  if (!status)
+  {
+    Serial.println(F("No response from server. Waiting and trying again..."));
+    delay(1000);
+    return 0;
+  }
+
+  Serial.println(F("Response Headers:"));
+  while (http_designoutreach.headerAvailable())
+  {
+    String headerName = http_designoutreach.readHeaderName();
+    String headerValue = http_designoutreach.readHeaderValue();
+    Serial.println("    " + headerName + " : " + headerValue);
+  }
+
+  // Accept 200 or 201 as a valid response code for POST
+  if (status != 200 && status != 201)
+  {
+    Serial.print(F("HTTP POST returned invalid response code: "));
+    Serial.println(status);
+    return 0;
+  }
+
+  int length = http_designoutreach.contentLength();
+  if (length >= 0) {
+    Serial.print(F("Content length is: "));
+    Serial.println(length);
+  }
+  if (http_designoutreach.isResponseChunked()) {
+    Serial.println(F("The response is chunked"));
+  }
+
+  String body = http_designoutreach.responseBody();
+  Serial.print(F("Response body length is: "));
+  Serial.println(body.length());
+
+  Serial.println(F("Response:"));
+  Serial.println(body);
+
+  // Close the connection
+  http_designoutreach.stop();
+  Serial.println(F("Server disconnected"));
+
+  return 1;
+}
+#endif // WATERPAL_USE_DESIGNOUTREACH_HTTP
 
 #endif // WATERPAL_GPRS_H
