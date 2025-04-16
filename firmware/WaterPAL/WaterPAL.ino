@@ -496,8 +496,8 @@ void doSendSMS()
         Serial.println("Failed to send daily data to Design Outreach via GPRS. No more retries!");
         logError(ERROR_GPRS_FAIL); // , "Failed to send data via GPRS");
       }
-    }
 #endif // WATERPAL_USE_DESIGNOUTREACH_HTTP
+    }
   }
 
   // ******* SMS ********
