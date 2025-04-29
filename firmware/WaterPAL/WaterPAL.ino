@@ -44,10 +44,10 @@ volatile RTC_DATA_ATTR int64_t last_sms_send_time_s = 0;         // Seconds sinc
 volatile RTC_DATA_ATTR int64_t last_extra_sensor_read_time_s = 0;// Seconds since epoch of the last extra sensor read
 
 // How frequently do we want to log from peripheral sensors? (temp, humidity, etc)
-#define EXTRA_SENSOR_READ_INTERVAL ((24l * 60l * 60l) / NUM_EXTRA_SENSOR_READS_PER_DAY)
+#define EXTRA_SENSOR_READ_INTERVAL ((24l * 60l * 60l) / (NUM_EXTRA_SENSOR_READS_PER_DAY > 0 ? NUM_EXTRA_SENSOR_READS_PER_DAY : 1)) // 24 hours in seconds divided by the number of readings per day
 
 // Array to store the last read values from the extra sensors
-volatile RTC_DATA_ATTR float extra_sensor_values[NUM_EXTRA_SENSORS * NUM_EXTRA_SENSOR_READS_PER_DAY];
+volatile RTC_DATA_ATTR float extra_sensor_values[(NUM_EXTRA_SENSORS > 0 ? NUM_EXTRA_SENSORS : 1) * (NUM_EXTRA_SENSOR_READS_PER_DAY > 0 ? NUM_EXTRA_SENSOR_READS_PER_DAY : 1)];
 volatile RTC_DATA_ATTR int extra_sensor_read_count = 0;
 volatile RTC_DATA_ATTR int64_t last_time_drift_val_s = 0; // Time drift in seconds at the last check
 
@@ -581,6 +581,11 @@ void doSendSMS()
 }
 
 void doReadExtraSensors() {
+  if (NUM_EXTRA_SENSOR_READS_PER_DAY == 0 || NUM_EXTRA_SENSORS == 0)
+  {
+    return;
+  }
+
   // Read the extra sensors here (such as temperature, humidity, etc)
   sensors_setup();
 
@@ -675,33 +680,37 @@ void doTimeChecks() {
   long seconds_since_midnight = now - prev_midnight;
 
   Serial.println("  Seconds since midnight: " + String(seconds_since_midnight));
+  time_t prev_scheduled_sensor_read_time = 0;
 
-  // When was the last time that we should have read the sensors?
-  time_t prev_scheduled_sensor_read_time = prev_midnight + long(seconds_since_midnight / EXTRA_SENSOR_READ_INTERVAL) * EXTRA_SENSOR_READ_INTERVAL;
-
-  Serial.println("  Previous scheduled sensor read time: " + String(prev_scheduled_sensor_read_time));
-
-  // If the previous sensor read time is newer than the last time we read the sensors, then we should read the sensors now.
-  // TODO: Add a grace period here, so that if we're within X minutes of the target time, then do the send / read anyways?
-  if (prev_scheduled_sensor_read_time > last_extra_sensor_read_time_s)
+  if (NUM_EXTRA_SENSOR_READS_PER_DAY > 0 && NUM_EXTRA_SENSORS > 0)
   {
-    Serial.println("    !Time to read extra sensors!");
-    doReadExtraSensors();
+    // When was the last time that we should have read the sensors?
+    prev_scheduled_sensor_read_time = prev_midnight + long(seconds_since_midnight / EXTRA_SENSOR_READ_INTERVAL) * EXTRA_SENSOR_READ_INTERVAL;
 
-    last_extra_sensor_read_time_s = now;
+    Serial.println("  Previous scheduled sensor read time: " + String(prev_scheduled_sensor_read_time));
 
-    print_extra_sensor_vals();
-    float humidity_min = get_extra_sensor_min(0);
-    float humidity_max = get_extra_sensor_max(0);
-    float humidity_avg = get_extra_sensor_avg(0);
-    float temp_min = get_extra_sensor_min(1);
-    float temp_max = get_extra_sensor_max(1);
-    float temp_avg = get_extra_sensor_avg(1);
+    // If the previous sensor read time is newer than the last time we read the sensors, then we should read the sensors now.
+    // TODO: Add a grace period here, so that if we're within X minutes of the target time, then do the send / read anyways?
+    if (prev_scheduled_sensor_read_time > last_extra_sensor_read_time_s)
+    {
+      Serial.println("    !Time to read extra sensors!");
+      doReadExtraSensors();
 
-    Serial.println("  Calculated extra sensor values:");
-    Serial.println("    Humidity: Min: " + String(humidity_min, 2) + " - Avg: " + String(humidity_avg, 2) + " - Max: " + String(humidity_max, 2));
-    Serial.println("    Temperature: Min: " + String(temp_min, 2) + " - Avg: " + String(temp_avg, 2) + " - Max: " + String(temp_max, 2));
+      last_extra_sensor_read_time_s = now;
 
+      print_extra_sensor_vals();
+      float humidity_min = get_extra_sensor_min(0);
+      float humidity_max = get_extra_sensor_max(0);
+      float humidity_avg = get_extra_sensor_avg(0);
+      float temp_min = get_extra_sensor_min(1);
+      float temp_max = get_extra_sensor_max(1);
+      float temp_avg = get_extra_sensor_avg(1);
+
+      Serial.println("  Calculated extra sensor values:");
+      Serial.println("    Humidity: Min: " + String(humidity_min, 2) + " - Avg: " + String(humidity_avg, 2) + " - Max: " + String(humidity_max, 2));
+      Serial.println("    Temperature: Min: " + String(temp_min, 2) + " - Avg: " + String(temp_avg, 2) + " - Max: " + String(temp_max, 2));
+
+    }
   }
 
   // When was the previous time that we should have sent an SMS today?
@@ -718,7 +727,7 @@ void doTimeChecks() {
   }
 
   time_t next_scheduled_sms_send_time = prev_scheduled_sms_send_time + SMS_DAILY_SEND_INTERVAL;
-  time_t next_scheduled_sensor_read_time = prev_scheduled_sensor_read_time + EXTRA_SENSOR_READ_INTERVAL;
+  time_t next_scheduled_sensor_read_time = (NUM_EXTRA_SENSOR_READS_PER_DAY > 0 && NUM_EXTRA_SENSORS > 0) ? prev_scheduled_sensor_read_time + EXTRA_SENSOR_READ_INTERVAL : next_scheduled_sms_send_time;
 
   Serial.println("  Next scheduled sensor read time: " + String(next_scheduled_sensor_read_time) + " (delta: " + String(next_scheduled_sensor_read_time - now) + ")");
   Serial.println("  Next scheduled SMS send time: " + String(next_scheduled_sms_send_time) + " (delta: " + String(next_scheduled_sms_send_time - now) + ")");
