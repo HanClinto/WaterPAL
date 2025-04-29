@@ -344,11 +344,13 @@ int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dail
   jsonPayload += "\"total_sms_count\": \"" + String(totalSMSCount) + "\" ";
   jsonPayload += "}";
 
-  Serial.println(F("Prepared JSON payload:"));
+  Serial.print(F("Prepared JSON payload (length: "));
+  Serial.print(jsonPayload.length());
+  Serial.println(F("):"));
   Serial.println(jsonPayload);
 
   // Define the endpoint URL (without query parameters now)
-  String url = "/ulcs/usagedata";
+  String url = "ulcs/usagedata";
 
   Serial.print(F("Requesting POST to URL: "));
   Serial.println(url);
@@ -365,7 +367,7 @@ int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dail
 
   // Send the JSON payload
   http_designoutreach.beginBody();
-  http_designoutreach.println(jsonPayload);
+  http_designoutreach.print(jsonPayload);
   http_designoutreach.endRequest();
 
   // Read the status code and body of the response
