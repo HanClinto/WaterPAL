@@ -22,8 +22,8 @@ HttpClient http(client, server, port);
 
 #if WATERPAL_USE_DESIGNOUTREACH_HTTP
 // Server details for Design Outreach servers
-const char server_designoutreach[] = "devdo-ulcs.bridgetreedcc.com";
-const int port_designoutreach = 80;
+const char server_designoutreach[] = "devdo.bridgetreedcc.com";
+const int port_designoutreach = 443;
 
 // NOTE: "To have more than one client of any type, you need to create them on different sockets." c.f. https://github.com/vshymanskyy/TinyGSM/issues/292#issuecomment-496014840
 TinyGsmClient client_designoutreach(modem, 1);
@@ -360,7 +360,7 @@ int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dail
   http_designoutreach.beginRequest();
   http_designoutreach.post(url);
   http_designoutreach.sendHeader("Content-Type", "application/json");
-  http_designoutreach.sendHeader("Authentication", header_a);
+  http_designoutreach.sendHeader("Key", header_a);
   http_designoutreach.sendHeader("Content-Length", jsonPayload.length());
 
   // Send the JSON payload
