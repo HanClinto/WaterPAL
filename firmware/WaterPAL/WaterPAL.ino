@@ -460,7 +460,6 @@ void doSendSMS()
         Serial.println("Failed to send daily data via GPRS. No more retries!");
         logError(ERROR_GPRS_FAIL); // , "Failed to send data via GPRS");
       }
-    }
 
 #if WATERPAL_USE_DESIGNOUTREACH_HTTP
       Serial.println("Sending data via GPRS to DesignOutreach...");
