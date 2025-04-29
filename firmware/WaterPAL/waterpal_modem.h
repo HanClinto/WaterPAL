@@ -85,7 +85,7 @@ int64_t modem_on_get_imei()
   bool full_restart = false;
 
   // Start the modem
-
+  modem.setBaud(UART_BAUD); // Set the baud rate for the modem
   do {
     // There are two ways to initialize the modem -- restart, or simple init.
     if (full_restart) {
@@ -206,6 +206,19 @@ batteryInfo modem_get_batt_val_retry() {
     // Clear our buffer
     int bytes_cleared = modem_clear_buffer();
     Serial.println("Failed to get battery levels. Cleared " + String(bytes_cleared) + " bytes from buffer. Retrying...");
+  }
+  // NaN check
+  if (isnan(battInfo.percentage))
+  {
+    battInfo.percentage = 0;
+  }
+  if (isnan(battInfo.voltage_mV))
+  {
+    battInfo.voltage_mV = 0;
+  }
+  if (isnan(battInfo.charging))
+  {
+    battInfo.charging = 0;
   }
   return battInfo;
 }

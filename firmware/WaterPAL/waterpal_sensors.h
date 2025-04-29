@@ -20,7 +20,13 @@ void sensors_setup()
 
 float sensors_read_humidity()
 {
-    return dht.readHumidity();
+    float humidity = dht.readHumidity();
+    // Ensure it's not NaN
+    if (isnan(humidity))
+    {
+        return 0;
+    }
+    return humidity;
 }
 
 float sensors_read_humidity_retry()
@@ -41,7 +47,13 @@ float sensors_read_humidity_retry()
 
 float sensors_read_temp_c()
 {
-    return dht.readTemperature();
+    float temp_c = dht.readTemperature();
+    // Ensure it's not NaN
+    if (isnan(temp_c))
+    {
+        return 0;
+    }
+    return temp_c;
 }
 
 float sensors_read_temp_c_retry()
