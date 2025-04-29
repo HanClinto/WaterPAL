@@ -460,6 +460,7 @@ void doSendSMS()
         Serial.println("Failed to send daily data via GPRS. No more retries!");
         logError(ERROR_GPRS_FAIL); // , "Failed to send data via GPRS");
       }
+    }
 
 #if WATERPAL_USE_DESIGNOUTREACH_HTTP
       Serial.println("Sending data via GPRS to DesignOutreach...");
@@ -623,6 +624,10 @@ float get_extra_sensor_min(int sensor_index)
       min_val = extra_sensor_values[i * NUM_EXTRA_SENSORS + sensor_index];
     }
   }
+  if (isnan(min_val))
+  {
+    return 0;
+  }
   return min_val;
 }
 
@@ -635,6 +640,10 @@ float get_extra_sensor_max(int sensor_index)
     {
       max_val = extra_sensor_values[i * NUM_EXTRA_SENSORS + sensor_index];
     }
+  }
+  if (isnan(max_val))
+  {
+    return 0;
   }
   return max_val;
 }
@@ -651,7 +660,12 @@ float get_extra_sensor_avg(int sensor_index)
   {
     sum += extra_sensor_values[i * NUM_EXTRA_SENSORS + sensor_index];
   }
-  return sum / extra_sensor_read_count;
+  float avg = sum / extra_sensor_read_count;
+  if (isnan(avg))
+  {
+    return 0;
+  }
+  return avg;
 }
 
 // doTimeChecks() takes care of all time-based housekeeping tasks, such as reading the extra sensors, sending SMS messages, and going back to sleep.
