@@ -26,7 +26,7 @@ const char server_designoutreach[] = "devdo.bridgetreedcc.com";
 const int port_designoutreach = 443;
 
 // NOTE: "To have more than one client of any type, you need to create them on different sockets." c.f. https://github.com/vshymanskyy/TinyGSM/issues/292#issuecomment-496014840
-TinyGsmClient client_designoutreach(modem, 1);
+TinyGsmClientSecure client_designoutreach(modem, 1);
 HttpClient http_designoutreach(client_designoutreach, server_designoutreach, port_designoutreach);
 #endif
 
@@ -326,22 +326,22 @@ int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dail
 
   // Create the JSON payload
   String jsonPayload = "{";
-  jsonPayload += "\"sensor_id\": \"" + imei + "\",";
-  jsonPayload += "\"Imei_number\": \"" + imei + "\",";
+  jsonPayload += "\"sensor_id\": \"" + imei + "\", ";
+  jsonPayload += "\"Imei_number\": \"" + imei + "\", ";
 
-  jsonPayload += "\"timestamp\": \"" + time_iso8601 + "\",";
+  jsonPayload += "\"timestamp\": \"" + time_iso8601 + "\", ";
 
-  jsonPayload += "\"daily_water_usage_second\": " + String(dailyWaterUsageTime) + ",";
-  jsonPayload += "\"battery_voltage\": " + String(batteryVoltage) + ",";
-  jsonPayload += "\"gallons\": " + String(gallons) + ",";
-  jsonPayload += "\"period\": \"24 Hours\",";
-  jsonPayload += "\"boot_count\": \"" + String(bootCount) + "\",";
-  jsonPayload += "\"battery_charge\": \"" + String(batteryChargePercent) + "\",";
-  jsonPayload += "\"signal_strength\": \"" + String(signalStrength) + "\",";
-  jsonPayload += "\"humid\": \"" + String(humidityAvg) + "\",";  // Using avg humidity as the example only has one field
-  jsonPayload += "\"temperature\": \"" + String(temperatureAvg) + "\",";  // Using avg temperature
-  jsonPayload += "\"detected_clock\": \"" + String(detectedClockTimeDrift) + "\",";
-  jsonPayload += "\"total_sms_count\": \"" + String(totalSMSCount) + "\"";
+  jsonPayload += "\"daily_water_usage_second\": " + String(dailyWaterUsageTime) + ", ";
+  jsonPayload += "\"battery_voltage\": " + String(batteryVoltage) + ", ";
+  jsonPayload += "\"gallons\": " + String(gallons) + ", ";
+  jsonPayload += "\"period\": \"24 Hours\", ";
+  jsonPayload += "\"boot_count\": \"" + String(bootCount) + "\", ";
+  jsonPayload += "\"battery_charge\": \"" + String(batteryChargePercent) + "\", ";
+  jsonPayload += "\"signal_strength\": \"" + String(signalStrength) + "\", ";
+  jsonPayload += "\"humid\": \"" + String(humidityAvg) + "\", ";  // Using avg humidity as the example only has one field
+  jsonPayload += "\"temperature\": \"" + String(temperatureAvg) + "\", ";  // Using avg temperature
+  jsonPayload += "\"detected_clock\": \"" + String(detectedClockTimeDrift) + "\", ";
+  jsonPayload += "\"total_sms_count\": \"" + String(totalSMSCount) + "\" ";
   jsonPayload += "}";
 
   Serial.println(F("Prepared JSON payload:"));
@@ -365,7 +365,7 @@ int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dail
 
   // Send the JSON payload
   http_designoutreach.beginBody();
-  http_designoutreach.print(jsonPayload);
+  http_designoutreach.println(jsonPayload);
   http_designoutreach.endRequest();
 
   // Read the status code and body of the response
