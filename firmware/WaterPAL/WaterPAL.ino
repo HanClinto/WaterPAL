@@ -88,6 +88,10 @@ float get_extra_sensor_avg(int sensor_index);
 // Part 1 is choosing what triggered the wakeup cycle, then drop to specific case
 void setup()
 {
+  // Enable the watchdog timer
+  watchdog_enable();
+  watchdog_pet();
+
   // Configure the input pin with a pulldown resistor
   pinMode(WATERPAL_FLOAT_SWITCH_INPUT_PIN, INPUT_PULLUP); // Steve - Aug 7 - pullup two x 10k resistor added, which also drains while switch is closed.
 
@@ -115,6 +119,8 @@ void setup()
     delay(50);                              // Delay for a bit between each read.
   }
 
+  watchdog_pet();
+
   // Democratically vote for the value of the input pin.
   //  If we have a majority of readings that are HIGH, then set the input pin value to HIGH. If we have a majority of readings that are LOW, then set the input pin value to LOW.
   water_sensor_value = (totalReading * 2 > NUM_READS);
@@ -125,6 +131,14 @@ void setup()
   {
     // If we have a mix of readings, then note it in the log so that we know the debounce code did something
     Serial.println("   Mixed readings detected -- debouncing code worked! Total readings: " + String(totalReading) + " out of " + String(NUM_READS));
+  }
+
+  // Check the reset reason to see if we are waking up from a WDT reset
+  esp_reset_reason_t reset_reason = esp_reset_reason();
+  Serial.println("  Reset reason: " + String(reset_reason));
+  if (reset_reason == ESP_RST_TASK_WDT || reset_reason == ESP_RST_INT_WDT)
+  {
+    Serial.println("   ###### WDT reset detected ######");
   }
 
   // Check the wakeup reason
@@ -148,6 +162,8 @@ void setup()
     Serial.println("   Waking up from timer");
   }
 
+  watchdog_pet();
+
   // No matter why we woke up, attempt to log our water usage time.
   doLogWaterInput();
   last_water_sensor_value = water_sensor_value;
@@ -159,6 +175,8 @@ void setup()
     doExtendedSelfCheck(false);
   }
 
+  watchdog_pet();
+
   // No matter why we woke up, always check to see if it's time to send an SMS.
 
   // Check to see if we've received any SMS
@@ -169,6 +187,8 @@ void setup()
     // TODO: Do something with the received SMS (apply reconfiguration, etc)
   }
 
+  watchdog_pet();
+
   // No matter how we woke up, always go back to sleep at the end.
   doTimeChecks();
 }
@@ -176,6 +196,8 @@ void setup()
 // We only do an extended self-check every X boots, to save power.
 void doExtendedSelfCheck(bool doSetNetworkMode = false)
 {
+  watchdog_pet();
+
   Serial.println("doExtendedSelfCheck()");
   printLocalTime(); // NOTE: This should print an uninitialized time (1970) until we set the time from the cell tower.
 
@@ -217,6 +239,8 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
   // Check GPS (optional)
   #if WATERPAL_USE_GPS
 
+  watchdog_pet();
+
   // Turn GPS on
   bool gps_res = modem_gps_on();
 
@@ -236,6 +260,8 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
 
   #endif // WATERPAL_USE_GPS
 
+  watchdog_pet();
+
   // Get Cell Tower Info
   String cpsi = modem_get_cpsi();
   if (cpsi.length() == 0)
@@ -248,6 +274,8 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
   // Check to see if we should send our update via HTTP
   if (WATERPAL_USE_GPRS)
   {
+    watchdog_pet();
+
     Serial.println("Connecting to GPRS for extended data...");
     int gprs_success = gprs_connect();
 
@@ -258,6 +286,8 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
     } else {
       Serial.println("Sending extended data via GPRS...");
       for (int cnt = 0; cnt < WATERPAL_HTTP_RETRY_CNT; cnt++) {
+        watchdog_pet();
+
         gprs_success = gprs_send_data_weekly(
           imei_base64,
           total_sms_send_count,
@@ -307,6 +337,8 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
              gps_data.lon,
              cpsi.c_str());
 
+  watchdog_pet();
+
   // Send the SMS
   bool sms_res = modem_broadcast_sms(sms_buffer, WATERPAL_SMS_RETRY_CNT);
 
@@ -344,6 +376,8 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
 
 void doLogWaterInput()
 {
+  watchdog_pet();
+
   Serial.println("doLogFallingEdge()");
 
   // If we detect an edge (whether rising or falling), track how much time delta there was.
@@ -378,6 +412,8 @@ void doLogWaterInput()
 
 void doSendSMS()
 {
+  watchdog_pet();
+
   Serial.println("doSendSMS()");
   // Send a text message (to a configured number) with the the previous day's cumulative water usage time. If the message is sent successfully, then clear the cumulative amount and go back to sleep for another 24 hrs.
   GET_LOCALTIME_NOW; // populate now and timeinfo
@@ -385,6 +421,8 @@ void doSendSMS()
   // Power up the modem (take it out of airplane / low-power mode, or whatever's needed)
   //bool init_success = modem_on();
   imei = modem_on_get_imei();
+
+  watchdog_pet();
 
   // Get our modem identification
   String imei_base64 = _int64_to_base64(imei);
@@ -395,12 +433,16 @@ void doSendSMS()
   batteryInfo batt_val = modem_get_batt_val_retry(); //  Get battery value from modem
   Serial.println( "Battery level: charge status: " + String(batt_val.charging) + " percentage: " + String(batt_val.percentage) + " mV: " + String(batt_val.voltage_mV));
 
+  watchdog_pet();
+
   // Get the signal quality
   int8_t signal_quality = modem_get_signal_quality_retry();
   Serial.println("Signal quality: " + String(signal_quality) + "%");
 
   Serial.println("  >> Sending SMS with water usage time: " + String(total_water_usage_time_s) + " seconds");
   Serial.println("  >> SMS sent at " + String(timeinfo.tm_hour) + ":" + String(timeinfo.tm_min) + ":" + String(timeinfo.tm_sec));
+
+  watchdog_pet();
 
   // Calculate extra sensor values
   print_extra_sensor_vals();
@@ -414,6 +456,8 @@ void doSendSMS()
   Serial.println("  Calculated extra sensor values:");
   Serial.println("    Humidity: Min: " + String(humidity_min, 2) + " - Avg: " + String(humidity_avg, 2) + " - Max: " + String(humidity_max, 2));
   Serial.println("    Temperature: Min: " + String(temp_min, 2) + " - Avg: " + String(temp_avg, 2) + " - Max: " + String(temp_max, 2));
+
+  watchdog_pet();
 
   // Check to see if we should send our update via HTTP
   if (WATERPAL_USE_GPRS)
@@ -502,6 +546,8 @@ void doSendSMS()
 
   // ******* SMS ********
 
+  watchdog_pet();
+
   // Confirm that it sent correctly, and if so, clear the total water usage time.
   bool success = false;
 
@@ -581,6 +627,8 @@ void doSendSMS()
 }
 
 void doReadExtraSensors() {
+  watchdog_pet();
+
   if (NUM_EXTRA_SENSOR_READS_PER_DAY == 0 || NUM_EXTRA_SENSORS == 0)
   {
     return;
@@ -602,6 +650,8 @@ void doReadExtraSensors() {
   extra_sensor_values[extra_sensor_read_count * NUM_EXTRA_SENSORS + 1] = temp_c;
 
   extra_sensor_read_count++;
+
+  watchdog_pet();
 }
 
 void print_extra_sensor_vals()
@@ -669,6 +719,8 @@ float get_extra_sensor_avg(int sensor_index)
 
 // doTimeChecks() takes care of all time-based housekeeping tasks, such as reading the extra sensors, sending SMS messages, and going back to sleep.
 void doTimeChecks() {
+  watchdog_pet();
+
   // Get the current system time
   GET_LOCALTIME_NOW; // populate now and timeinfo
 
@@ -726,6 +778,8 @@ void doTimeChecks() {
     }
   }
 
+  watchdog_pet();
+
   // When was the previous time that we should have sent an SMS today?
   time_t prev_scheduled_sms_send_time = prev_midnight + long(seconds_since_midnight / SMS_DAILY_SEND_INTERVAL) * SMS_DAILY_SEND_INTERVAL;
 
@@ -763,6 +817,8 @@ void doTimeChecks() {
 // This function takes care of all housekeeping needed to go to deep sleep and save our battery.
 void doDeepSleep(time_t nextWakeTime)
 {
+  watchdog_pet();
+
   Serial.println("doDeepSleep()");
   // Calculate the amount of time remaining until our target SMS send time (10pm)
   // Set wake conditions of the device to be either the target SMS send time or a rising edge on the water sensor input pin -- whichever comes first.
@@ -783,6 +839,8 @@ void doDeepSleep(time_t nextWakeTime)
       Serial.println("Disconnected from GPRS");
     }
   }
+
+  watchdog_pet();
 
   // Shut off the modem (TODO: Perhaps only put it into sleep / low-power mode?)
   modem_off();
@@ -808,6 +866,8 @@ void doDeepSleep(time_t nextWakeTime)
     Serial.println("  Configuring trigger for rising edge");
   }
 
+  watchdog_pet();
+
   // Configure the deep sleep wakeup
   esp_sleep_enable_ext0_wakeup(WATERPAL_FLOAT_SWITCH_INPUT_PIN, triggerOnEdge);
 
@@ -817,6 +877,10 @@ void doDeepSleep(time_t nextWakeTime)
   // Log some information for debugging purposes:
   Serial.println("  Total water usage time: " + String(total_water_usage_time_s) + " seconds");
 
+  Serial.println("  Disabling watchdog timer");
+  // Disable the watchdog timer before going to sleep
+  watchdog_disable();
+  
   // Go to sleep
   Serial.println("  Going to sleep now for " + String(seconds_until_wakeup) + " seconds until next scheduled wake up");
   esp_deep_sleep_start();

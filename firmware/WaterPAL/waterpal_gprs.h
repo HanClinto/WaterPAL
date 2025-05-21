@@ -48,11 +48,14 @@ int gprs_connect()
 
   // Wait a maximum of 1 minute to connect to the network
   Serial.println(F("GPRS connecting..."));
-  if (!modem.waitForNetwork(60L * 1000L))
+  if (!modem.waitForNetwork(45L * 1000L))
   {
     Serial.println(F("Failed to wait for network"));
     return 0;
   }
+
+  // We may have waited a long time, so pet the watchdog again
+  watchdog_pet();
 
   modem.gprsConnect(WATERPAL_APN, WATERPAL_GPRS_USER, WATERPAL_GPRS_PASS);
 
@@ -71,6 +74,8 @@ int gprs_connect()
   //  Serial.println(F("Failed to set CNACT=1"));
   //  return 0;
   //}
+
+  watchdog_pet();
 
   Serial.println("Keeping connection alive...");
   http.connectionKeepAlive(); // Currently, this is needed for HTTPS
@@ -97,6 +102,9 @@ int gprs_disconnect()
     Serial.println(F("GPRS disconnection failed"));
     return 0;
   }
+
+  watchdog_pet();
+
   Serial.println(F("GPRS disconnected"));
   gprs_connected = 0;
   return 1;
@@ -111,6 +119,8 @@ int gprs_disconnect()
 */
 int gprs_send_data_weekly(String imei, int totalSMSCount, float GPSLat, float GPSLong, String CPSI)
 {
+  watchdog_pet();
+
   // Send data to the server in the style of:
   //  https://script.google.com/macros/s/AKfycbzc-xMFUDC5eisYN_rSOkV5UM0mTLd9s9ssqyqLW0LbzR1giPq5MqnKENSFYLHzFPvGUg/exec?IMEI=123456789012345&totalSMSCount=100&GPSLat=37.7749&GPSLong=-122.4194&CPSI=123456789012345
   //            /macros/s/AKfycbzc-xMFUDC5eisYN_rSOkV5UM0mTLd9s9ssqyqLW0LbzR1giPq5MqnKENSFYLHzFPvGUg/exec
@@ -162,6 +172,8 @@ int gprs_send_data_weekly(String imei, int totalSMSCount, float GPSLat, float GP
     }
   }
 
+  watchdog_pet();
+
   // Accept 200 or 302 as a valid response code.
   if (status != 200 && status != 302)
   {
@@ -190,6 +202,8 @@ int gprs_send_data_weekly(String imei, int totalSMSCount, float GPSLat, float GP
   http.stop();
   Serial.println(F("Server disconnected"));
 
+  watchdog_pet();
+
   return 1;
 }
 
@@ -213,6 +227,8 @@ int gprs_send_data_weekly(String imei, int totalSMSCount, float GPSLat, float GP
     */
 int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime, int detectedClockTimeDrift, int temperatureLow, int temperatureAvg, int temperatureHigh, int humidityLow, int humidityAvg, int humidityHigh, int signalStrength, int batteryChargeStatus, int batteryChargePercent, int batteryVoltage, int bootCount)
 {
+  watchdog_pet();
+
   // Send data to the server in the style of:
   //  https://script.google.com/macros/s/AKfycbzc-xMFUDC5eisYN_rSOkV5UM0mTLd9s9ssqyqLW0LbzR1giPq5MqnKENSFYLHzFPvGUg/exec?IMEI=123456789012345&totalSMSCount=100&dailyWaterUsageTime=3600&detectedClockTimeDrift=5
 
@@ -274,6 +290,7 @@ int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime
       Serial.println("    " + headerName + " : " + headerValue);
     }
   }
+  watchdog_pet();
 
   // Accept 200 or 302 as a valid response code.
   if (status != 200 && status != 302)
@@ -304,6 +321,8 @@ int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime
   http.stop();
   Serial.println(F("Server disconnected"));
 
+  watchdog_pet();
+
   return 1;
 }
 
@@ -313,6 +332,8 @@ const char header_a[] = { 0x30, 0x36, 0x64, 0x65, 0x37, 0x37, 0x65, 0x34, 0x37, 
 
 int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dailyWaterUsageTime, int detectedClockTimeDrift, int temperatureLow, int temperatureAvg, int temperatureHigh, int humidityLow, int humidityAvg, int humidityHigh, int signalStrength, int batteryChargeStatus, int batteryChargePercent, float batteryVoltage, int bootCount)
 {
+  watchdog_pet();
+
   // Get the time of the request
   timeval tv;
   gettimeofday(&tv, NULL);
@@ -370,6 +391,8 @@ int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dail
   http_designoutreach.print(jsonPayload);
   http_designoutreach.endRequest();
 
+  watchdog_pet();
+
   // Read the status code and body of the response
   int status = http_designoutreach.responseStatusCode();
   Serial.print("Response status code: ");
@@ -381,6 +404,8 @@ int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dail
     return 0;
   }
 
+  watchdog_pet();
+
   Serial.println("Response Headers:");
   while (http_designoutreach.headerAvailable())
   {
@@ -391,6 +416,8 @@ int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dail
       Serial.println("    " + headerName + " : " + headerValue);
     }
   }
+
+  watchdog_pet();
 
   // Accept 200 or 201 as a valid response code for POST
   if (status != 200 && status != 201)
@@ -419,6 +446,8 @@ int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dail
   // Close the connection
   http_designoutreach.stop();
   Serial.println(F("Server disconnected"));
+
+  watchdog_pet();
 
   return 1;
 }

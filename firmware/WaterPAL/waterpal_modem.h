@@ -4,6 +4,7 @@
 #include <TinyGsmClient.h> //  Purpose:  header file in the TinyGSM library, for communicating with various GSM modules. The library provides an abstraction layer that simplifies the process of sending AT commands.
 #include "waterpal_error_logging.h"
 #include "waterpal_clock.h"
+#include "waterpal_watchdog.h"
 
 // These functions are all related to the modem, and are used to interact with it in various ways. They are all part of the firmware for the WaterPAL device, which is designed to monitor water usage and send SMS messages with relevant data. The functions are used to gather information from the modem, send messages, and manage the modem's power state.
 
@@ -19,6 +20,8 @@ static bool _modem_is_on = false; // 0 = off, 1 = on
 
 bool modem_on(bool full_restart = true)
 {
+  watchdog_pet();
+
   if (_modem_is_on)
   {
     Serial.println("Modem is already on");
@@ -33,6 +36,8 @@ bool modem_on(bool full_restart = true)
   digitalWrite(PWR_PIN, LOW);  // Set power pin low (off), which when inverted is high
 
   SerialAT.begin(UART_BAUD, SERIAL_8N1, PIN_RX, PIN_TX); // Set conditions for serial port to read and write
+
+  watchdog_pet();
 
   bool success = false;
   // There are two ways to initialize the modem -- restart, or simple init.
@@ -57,6 +62,8 @@ bool modem_on(bool full_restart = true)
     }
   }
 
+  watchdog_pet();
+
   return success;
 }
 
@@ -64,6 +71,8 @@ int64_t _imei;
 
 int64_t modem_on_get_imei()
 {
+  watchdog_pet();
+
   if (_modem_is_on)
   {
     Serial.println("Modem is already on");
@@ -87,6 +96,8 @@ int64_t modem_on_get_imei()
   // Start the modem
   modem.setBaud(UART_BAUD); // Set the baud rate for the modem
   do {
+    watchdog_pet();
+
     // There are two ways to initialize the modem -- restart, or simple init.
     if (full_restart) {
       Serial.println("Initializing modem via restart..."); // Start modem on next line
@@ -112,6 +123,8 @@ int64_t modem_on_get_imei()
 
     for (int i = 0; i < 10; i++)
     {
+      watchdog_pet();
+
       if (_imei != 0)
       {
         Serial.print("Successfully retrievied IMEI: ");
@@ -128,6 +141,8 @@ int64_t modem_on_get_imei()
       _imei = modem_get_IMEI();
     }
 
+    watchdog_pet();
+
   } while (!success);
 
   _modem_is_on = true;
@@ -137,6 +152,8 @@ int64_t modem_on_get_imei()
 
 bool modem_off()
 {
+  watchdog_pet();
+
   // Send the shutdown command
   modem.sendAT("+CPOWD=1"); // Power down the modem
   delay(1000);
@@ -151,6 +168,8 @@ bool modem_off()
 
   _modem_is_on = false;
 
+  watchdog_pet();
+
   return true;
 }
 
@@ -163,6 +182,8 @@ typedef struct batteryInfo
 
 batteryInfo modem_get_batt_val()
 {
+  watchdog_pet();
+
   batteryInfo battInfo;
 
   // This function checks battery level.  See page 58 of SIM manual.  Output from CBC is (battery charging on or off 0,1,2),(percentage capacity),(voltage in mV)
@@ -171,6 +192,8 @@ batteryInfo modem_get_batt_val()
   // TODO: Simplify this as   if (!modem.waitResponse(1000L, res, "+CBC: ")) ?
   if (!modem.waitResponse("+CBC: "))
   {
+    watchdog_pet();
+
     logError(ERROR_BATTERY_READ); //, "Failed to get battery level");
     return battInfo;
   }
@@ -188,6 +211,8 @@ batteryInfo modem_get_batt_val()
     logError(ERROR_BATTERY_READ);
   }
 
+  watchdog_pet();
+
   return battInfo;
 }
 
@@ -195,6 +220,8 @@ batteryInfo modem_get_batt_val_retry() {
   batteryInfo battInfo;
   for (int i = 0; i < 10; i++)
   {
+    watchdog_pet();
+
     battInfo = modem_get_batt_val();
     // Percentage should be between 0 and 100, but let's be safe and check for 0-1000
     if (battInfo.percentage > 0 && battInfo.percentage < 1000)
@@ -220,6 +247,9 @@ batteryInfo modem_get_batt_val_retry() {
   {
     battInfo.charging = 0;
   }
+
+  watchdog_pet();
+
   return battInfo;
 }
 
@@ -245,6 +275,8 @@ int8_t modem_get_signal_quality_retry()
   int8_t csq = 0;
   for (int i = 0; i < 10; i++)
   {
+    watchdog_pet();
+
     csq = modem_get_signal_quality();
     if (csq > 0)
     {
@@ -262,17 +294,22 @@ int8_t modem_get_signal_quality_retry()
 // Clear the input buffer and return the number of bytes cleared
 int modem_clear_buffer()
 {
+  watchdog_pet();
+
   int bytes_cleared = 0;
   while (SerialAT.available())
   {
     SerialAT.read();
     bytes_cleared++;
   }
+  
   return bytes_cleared;
 }
 
 String modem_get_cpsi()
 {
+  watchdog_pet();
+
   String cpsi;
   modem.sendAT("+CPSI?"); //  test cell provider info
   if (modem.waitResponse("+CPSI: ") == 1)
@@ -343,6 +380,8 @@ int64_t _base64_to_int64(const String& b64_str)
 
 int64_t modem_get_IMEI()
 {
+  watchdog_pet();
+
   // The IMEI is either 15 or 16 digits long, so we need to store it as a string.
   // "The IMEI (15 decimal digits: 14 digits plus a check digit) or IMEISV (16 decimal digits: 14 digits plus two software version digits) includes information on the origin, model, and serial number of the device."
   // Ex: "869951037053562"
@@ -383,6 +422,8 @@ int8_t modem_setLocalTimeFromCCLK() {
     // -> +CCLK: "24/10/08,23:39:49-16"
     // ->
     // -> OK
+
+  watchdog_pet();
 
   modem.sendAT("+CCLK?");
   if (modem.waitResponse("+CCLK:") != 1) { return 0; }
@@ -434,6 +475,8 @@ int8_t modem_setLocalTimeFromCCLK() {
     Serial.println(">> TIME DRIFT: First time setting time from modem -- no drift calculation needed.");
   }
 
+  watchdog_pet();
+
   return res;
 }
 
@@ -466,6 +509,8 @@ bool modem_broadcast_sms(const String& message, const int num_retries = 10)
     // Retry sending the SMS message up to num_retries times
     while (retry_cnt < num_retries)
     {
+      watchdog_pet();
+
       if (modem.sendSMS(WATERPAL_DEST_PHONE_NUMBERS[i], message))
       {
         Serial.println(" SMS message sent successfully to number " + String(WATERPAL_DEST_PHONE_NUMBERS[i]) + " [" + String(i) + "]");
@@ -502,6 +547,8 @@ bool modem_broadcast_sms_sprintf(const char* format, ...)
 
 String modem_read_sms()
 {
+  watchdog_pet();
+
   // Configure the modem to read SMS messages
   modem.sendAT("+CMGF=1"); // Set SMS mode to text
   if (modem.waitResponse() != 1)
@@ -523,6 +570,8 @@ String modem_read_sms()
   sms.trim();
   modem.waitResponse();
 
+  watchdog_pet();
+
   // Delete all read SMS messages
   modem.sendAT("+CMGD=1,4"); // Delete all read SMS messages
   if (modem.waitResponse() != 1)
@@ -539,16 +588,21 @@ String modem_read_sms()
 
 bool modem_gps_on()
 {
+  watchdog_pet();
+
   // Set Modem GPS Power Control Pin to HIGH ,turn on GPS power
   // Only in version 20200415 is there a function to control GPS power
   modem.sendAT("+CGPIO=0,48,1,1");
   if (modem.waitResponse(10000L) != 1)
   {
+    watchdog_pet();
     logError(ERROR_GPS_FAIL); //, "Failed to turn on GPS");
   }
 
   Serial.println("\nEnabling GPS...\n");
 
+  watchdog_pet();
+  
   return modem.enableGPS();
 }
 
@@ -570,6 +624,8 @@ bool modem_get_gps(struct gpsInfo& gps, uint32_t timeout_s = 60)
 {
   bool success = false;
 
+  watchdog_pet();
+
   struct timeval gps_start;
   gettimeofday(&gps_start, NULL);
   struct timeval gps_now = gps_start;
@@ -577,6 +633,8 @@ bool modem_get_gps(struct gpsInfo& gps, uint32_t timeout_s = 60)
 
   while (gps_now.tv_sec - gps_start.tv_sec < timeout_s)
   {
+    watchdog_pet();
+
     if (modem.getGPS(&gps.lat, &gps.lon, 
                      0, 0, 0, 0, 0,
                      &gps.year, &gps.month, &gps.day,
@@ -613,6 +671,7 @@ bool modem_get_gps(struct gpsInfo& gps, uint32_t timeout_s = 60)
     Serial.println("GPS: Cleared " + String(bytes_cleared) + " bytes from buffer after GPS read.");
   }
 
+  watchdog_pet();
 
   return success;
 }
@@ -620,6 +679,8 @@ bool modem_get_gps(struct gpsInfo& gps, uint32_t timeout_s = 60)
 bool modem_gps_off()
 {
   bool success = modem.disableGPS();
+
+  watchdog_pet();
 
   // Set Modem GPS Power Control Pin to LOW ,turn off GPS power
   // Only in version 20200415 is there a function to control GPS power
@@ -633,6 +694,8 @@ bool modem_gps_off()
   if (bytes_cleared > 0) {
     Serial.println("GPS: Cleared " + String(bytes_cleared) + " bytes from buffer after GPS shutdown.");
   }
+
+  watchdog_pet();
 
   return success;
 }
