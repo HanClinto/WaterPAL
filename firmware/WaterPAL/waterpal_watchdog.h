@@ -9,9 +9,11 @@
 #define WATERPAL_WDT_TIMEOUT_SEC  (60) // Max is 60s for task WDT
 
 void watchdog_enable() {
+    esp_task_wdt_deinit(); // Deinitialize if already running
+
     // If the TWDT was not initialized automatically on startup, manually intialize it now
     esp_task_wdt_config_t twdt_config = {
-        .timeout_ms = WATERPAL_WDT_TIMEOUT_SEC,
+        .timeout_ms = WATERPAL_WDT_TIMEOUT_SEC * 1000,
         .idle_core_mask = (1 << CONFIG_FREERTOS_NUMBER_OF_CORES) - 1,    // Bitmask of all cores
         .trigger_panic = true,
     };
