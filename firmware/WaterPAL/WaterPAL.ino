@@ -224,16 +224,6 @@ void doExtendedSelfCheck(bool doSetNetworkMode = false)
     modem.setNetworkMode(WATERPAL_NETWORK_MODE);
   }
 
-  // Check IMEI
-
-  /*
-  String imei_base64 = modem_get_IMEI_base64();
-
-  Serial.print("IMEI (base64 encoded): " + imei_base64 + "\n");
-  int64_t imei = _base64_to_int64(imei_base64);
-  Serial.print("IMEI (decoded): " + String(imei) + "\n");
-  */
-
   gpsInfo gps_data;
 
   // Check GPS (optional)

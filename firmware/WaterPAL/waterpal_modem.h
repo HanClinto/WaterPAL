@@ -392,6 +392,9 @@ int64_t modem_get_IMEI()
   //  imei_str = "0000000000000000"; // Default if we cannot get an IMEI
   //}
 
+  // Reverse the IMEI string so that MSB is first
+  imei_str = String(imei_str.rbegin(), imei_str.rend());
+
   Serial.println("IMEI: " + imei_str);
 
   // Parse the IMEI string into a 64-bit integer
