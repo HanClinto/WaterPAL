@@ -551,6 +551,35 @@ void doSendSMS()
   // Confirm that it sent correctly, and if so, clear the total water usage time.
   bool success = false;
 
+  // Low water usage alert
+
+  // Check for low usage
+  if (total_water_usage_time_s < WATERPAL_LOW_USAGE_THRESHOLD)
+  {
+    Serial.println("Low water usage detected");
+    snprintf(sms_buffer, sizeof(sms_buffer), "1,%s,%lld,L,Low water usage detected: %lld",
+            // Header:
+               // Version (1)
+               imei_base64.c_str(),
+               total_sms_send_count,
+               // Packet type (L)
+               total_water_usage_time_s);
+
+    success = modem_send_urgent_sms(sms_buffer, WATERPAL_SMS_RETRY_CNT);
+    if (success)
+    {
+      Serial.println("Low water usage SMS sent successfully");
+      total_sms_send_count++;
+    }
+    else
+    {
+      Serial.println("Low water usage SMS failed to send");
+      logError(ERROR_SMS_FAIL); // , "Failed to send low water usage SMS message");
+    }
+  }
+
+
+  // Regular usage message
   snprintf(sms_buffer, sizeof(sms_buffer), "1,%s,%lld,R,%lld,%lld,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
            // Header:
              // Version (1)

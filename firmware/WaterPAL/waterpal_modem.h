@@ -534,6 +534,47 @@ bool modem_broadcast_sms(const String& message, const int num_retries = 10)
   return !error;
 }
 
+bool modem_send_urgent_sms(const String& message, const int num_retries = 10)
+{
+  bool error = false;
+
+  const int num_phone_numbers = sizeof(WATERPAL_URGENT_PHONE_NUMBERS) / sizeof(WATERPAL_URGENT_PHONE_NUMBERS[0]);
+
+  Serial.println("Broadcasting urgent SMS message to " + String(num_phone_numbers) + " numbers: '" + message + "'");
+
+  // Send the SMS message to all the phone numbers in the list
+  for (int i = 0; i < num_phone_numbers; i++)
+  {
+    int retry_cnt = 0;
+
+    // Retry sending the SMS message up to num_retries times
+    while (retry_cnt < num_retries)
+    {
+      watchdog_pet();
+
+      if (modem.sendSMS(WATERPAL_URGENT_PHONE_NUMBERS[i], message))
+      {
+        Serial.println(" Urgent SMS message sent successfully to number " + String(WATERPAL_URGENT_PHONE_NUMBERS[i]) + " [" + String(i) + "]");
+        break;
+      }
+      retry_cnt++;
+
+      int signal_quality = modem_get_signal_quality();
+
+      Serial.println(" Failed to send urgent SMS message to number " + String(WATERPAL_URGENT_PHONE_NUMBERS[i]) + " [" + String(i) + "]. Signal quality: " + String(signal_quality) + ". Retrying... (attempt " + String(retry_cnt) + " of " + String(num_retries) + ")");
+
+      delay(1000);
+    }
+    if (retry_cnt == num_retries)
+    {
+      logError(ERROR_SMS_FAIL); //, "Failed to send SMS message");
+      error = true;
+    }
+  }
+
+  return !error;
+}
+
 bool modem_broadcast_sms_sprintf(const char* format, ...)
 {
   char buffer[256];

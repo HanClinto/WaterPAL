@@ -18,6 +18,16 @@ const char* WATERPAL_DEST_PHONE_NUMBERS[] = {
   "+1987654322"
 };
 
+// WATERPAL_URGENT_PHONE_NUMBERS: Which phone numbers should receive SMS messages from the WaterPAL device in urgent situations.
+//  Urgent situations include critical situations, such as low water usage.
+//  The phone numbers must be in international format, e.g. +1 for the US.
+//  You can add multiple phone numbers by separating them with commas.
+const char* WATERPAL_URGENT_PHONE_NUMBERS[] = {
+  // TODO: Replace with your real phone numbers
+  "+1987654321",
+  "+1987654322"
+};
+
 #define WATERPAL_USE_GPRS true // Whether or not to use GPRS to send updates
 // TODO: Replace with your APN information if you want to send updates via HTTP
 const char WATERPAL_APN[] = "wholesale";
