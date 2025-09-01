@@ -69,6 +69,9 @@ const uint32_t WATERPAL_HTTP_TIMEOUT_MS = 60 * 1000;
 // 5 minutes after midnight, and every 5 minutes following. (high frequency for testing purposes)
 #define SMS_DAILY_SEND_INTERVAL (5 * 60l) // 5 minutes in seconds
 
+// WATERPAL_LOW_USAGE_THRESHOLD: Threshold for low water usage (in seconds) to send an urgent SMS.
+#define WATERPAL_LOW_USAGE_THRESHOLD (10 * 60l) // 10 minutes
+
 // **********
 // Float Sensor and Extra Sensor Configuration
 // **********
