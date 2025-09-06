@@ -546,8 +546,9 @@ void doSendSMS()
   if (total_water_usage_time_s < WATERPAL_LOW_USAGE_THRESHOLD)
   {
     Serial.printf("Low water usage detected (%lld)", total_water_usage_time_s);
-    snprintf(sms_buffer, sizeof(sms_buffer), "%s: Low water usage detected (%lld)",
+    snprintf(sms_buffer, sizeof(sms_buffer), "%s [%s]: Low water usage detected (%lld)",
                SITE_IDENTIFIER,
+               imei_base64.c_str(),
                total_water_usage_time_s);
 
     success = modem_send_urgent_sms(sms_buffer, WATERPAL_SMS_RETRY_CNT);
