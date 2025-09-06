@@ -359,7 +359,11 @@ String _int64_to_base64(int64_t val)
   String res = "";
   while (val > 0)
   {
-    res = b64[val & 0x3F] + res;
+    // Regular
+    //res = b64[val & 0x3F] + res;
+    // Reversed
+    res += b64[val & 0x3F];
+    
     val >>= 6;
   }
   return res;
