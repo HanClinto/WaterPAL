@@ -416,7 +416,6 @@ void doSendSMS()
 
   // Get our modem identification
   String imei_base64 = _int64_to_base64(imei);
-  //String imei_base64 = modem_get_IMEI_base64();
 
   // Get the battery level
   Serial.println("Reading battery level...");
@@ -546,13 +545,9 @@ void doSendSMS()
   // Check for low usage
   if (total_water_usage_time_s < WATERPAL_LOW_USAGE_THRESHOLD)
   {
-    Serial.println("Low water usage detected");
-    snprintf(sms_buffer, sizeof(sms_buffer), "1,%s,%lld,L,Low water usage detected: %lld",
-            // Header:
-               // Version (1)
-               imei_base64.c_str(),
-               total_sms_send_count,
-               // Packet type (L)
+    Serial.printf("Low water usage detected (%lld)", total_water_usage_time_s);
+    snprintf(sms_buffer, sizeof(sms_buffer), "%s: Low water usage detected (%lld)",
+               SITE_IDENTIFIER,
                total_water_usage_time_s);
 
     success = modem_send_urgent_sms(sms_buffer, WATERPAL_SMS_RETRY_CNT);

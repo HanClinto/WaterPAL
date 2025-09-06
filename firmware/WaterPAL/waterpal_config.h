@@ -9,6 +9,8 @@
 // SMS Configuration
 // **********
 
+const char* SITE_IDENTIFIER = "VillagePump1";
+
 // WATERPAL_DEST_PHONE_NUMBERS: Which phone numbers should receive SMS messages from the WaterPAL device.
 //  The phone numbers must be in international format, e.g. +1 for the US.
 //  You can add multiple phone numbers by separating them with commas.
