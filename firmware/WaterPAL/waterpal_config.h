@@ -91,6 +91,20 @@ Note: you can only use pins that are RTC GPIOs with this wake-up source. Here’
 #define WATERPAL_FLOAT_SWITCH_INVERT false // Set to true to invert the input pin value
 #define WATERPAL_DHTPIN 32
 
+// **********
+// Handle Counter Configuration
+// **********
+
+#define WATERPAL_USE_HANDLE_COUNTER true
+#define WATERPAL_COUNTER_I2C_ADDRESS 0x32
+#define WATERPAL_COUNTER_SDA_PIN 21
+#define WATERPAL_COUNTER_SCL_PIN 22
+#define WATERPAL_COUNTER_RST_PIN 33
+#define WATERPAL_COUNTER_LOOP_PIN 35
+#define WATERPAL_COUNTER_I2C_SPEED_HZ 100000
+#define WATERPAL_COUNTER_MAX_COUNT 16777216UL
+#define WATERPAL_MIN_DRY_DRAIN_TIME_S (4 * 60l) // Default to 240 seconds for pump to drain completely dry.
+
 #define NUM_EXTRA_SENSORS 2 // The number of extra sensors to read. Here, we have a humidity and temperature sensor.
 #define NUM_EXTRA_SENSOR_READS_PER_DAY 24 // How many readings do we want to log per day? Here, we log every hour.
 

@@ -223,9 +223,16 @@ int gprs_send_data_weekly(String imei, int totalSMSCount, float GPSLat, float GP
     data.batteryChargeStatus,              // battery charge status
     data.batteryChargePercent,             // battery charge (%)
     data.batteryVoltage,                   // battery voltage (mV)
-    data.bootCount                         // boot count
+    data.bootCount,                        // boot count
+    data.handleStrokesTotal,               // all handle strokes during report period
+    data.handleStrokesFlowingTotal,        // handle strokes while water was flowing
+    data.handleStrokesFlowingPerMin,       // handle strokes per flowing-water minute
+    data.dryStartCount,                    // qualifying dry starts during report period
+    data.dryStartStrokeTotal,              // dry-start strokes across qualifying dry starts
+    data.dryStartStrokeAvg,                // average dry-start strokes
+    data.dryStartStrokeMax                 // max dry-start strokes
     */
-int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime, int detectedClockTimeDrift, int temperatureLow, int temperatureAvg, int temperatureHigh, int humidityLow, int humidityAvg, int humidityHigh, int signalStrength, int batteryChargeStatus, int batteryChargePercent, int batteryVoltage, int bootCount)
+  int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime, int detectedClockTimeDrift, int temperatureLow, int temperatureAvg, int temperatureHigh, int humidityLow, int humidityAvg, int humidityHigh, int signalStrength, int batteryChargeStatus, int batteryChargePercent, int batteryVoltage, int bootCount, uint32_t handleStrokesTotal, uint32_t handleStrokesFlowingTotal, uint32_t handleStrokesFlowingPerMin, uint32_t dryStartCount, uint32_t dryStartStrokeTotal, uint32_t dryStartStrokeAvg, uint32_t dryStartStrokeMax)
 {
   watchdog_pet();
 
@@ -249,6 +256,13 @@ int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime
   url += "&batteryChargePercent=" + String(batteryChargePercent);
   url += "&batteryVoltage=" + String(batteryVoltage);
   url += "&bootCount=" + String(bootCount);
+  url += "&handle_strokes_total=" + String(handleStrokesTotal);
+  url += "&handle_strokes_flowing_total=" + String(handleStrokesFlowingTotal);
+  url += "&handle_strokes_flowing_per_min=" + String(handleStrokesFlowingPerMin);
+  url += "&dry_start_count=" + String(dryStartCount);
+  url += "&dry_start_stroke_total=" + String(dryStartStrokeTotal);
+  url += "&dry_start_stroke_avg=" + String(dryStartStrokeAvg);
+  url += "&dry_start_stroke_max=" + String(dryStartStrokeMax);
 
   Serial.print(F("Requesting URL: "));
   Serial.println(url);
@@ -330,7 +344,7 @@ int gprs_send_data_daily(String imei, int totalSMSCount, int dailyWaterUsageTime
 
 const char header_a[] = { 0x30, 0x36, 0x64, 0x65, 0x37, 0x37, 0x65, 0x34, 0x37, 0x30, 0x35, 0x37, 0x32, 0x30, 0x35, 0x31, 0x61, 0x33, 0x33, 0x30, 0x63, 0x33, 0x62, 0x39, 0x32, 0x30, 0x33, 0x61, 0x34, 0x64, 0x31, 0x32, 0x00 };
 
-int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dailyWaterUsageTime, int detectedClockTimeDrift, int temperatureLow, int temperatureAvg, int temperatureHigh, int humidityLow, int humidityAvg, int humidityHigh, int signalStrength, int batteryChargeStatus, int batteryChargePercent, float batteryVoltage, int bootCount)
+int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dailyWaterUsageTime, int detectedClockTimeDrift, int temperatureLow, int temperatureAvg, int temperatureHigh, int humidityLow, int humidityAvg, int humidityHigh, int signalStrength, int batteryChargeStatus, int batteryChargePercent, float batteryVoltage, int bootCount, uint32_t handleStrokesTotal, uint32_t handleStrokesFlowingTotal, uint32_t handleStrokesFlowingPerMin, uint32_t dryStartCount, uint32_t dryStartStrokeTotal, uint32_t dryStartStrokeAvg, uint32_t dryStartStrokeMax)
 {
   watchdog_pet();
 
@@ -362,6 +376,13 @@ int gprs_post_data_daily_designoutreach(String imei, int totalSMSCount, int dail
   jsonPayload += "\"humid\": \"" + String(humidityAvg) + "\", ";  // Using avg humidity as the example only has one field
   jsonPayload += "\"temperature\": \"" + String(temperatureAvg) + "\", ";  // Using avg temperature
   jsonPayload += "\"detected_clock\": \"" + String(detectedClockTimeDrift) + "\", ";
+  jsonPayload += "\"handle_strokes_total\": " + String(handleStrokesTotal) + ", ";
+  jsonPayload += "\"handle_strokes_flowing_total\": " + String(handleStrokesFlowingTotal) + ", ";
+  jsonPayload += "\"handle_strokes_flowing_per_min\": " + String(handleStrokesFlowingPerMin) + ", ";
+  jsonPayload += "\"dry_start_count\": " + String(dryStartCount) + ", ";
+  jsonPayload += "\"dry_start_stroke_total\": " + String(dryStartStrokeTotal) + ", ";
+  jsonPayload += "\"dry_start_stroke_avg\": " + String(dryStartStrokeAvg) + ", ";
+  jsonPayload += "\"dry_start_stroke_max\": " + String(dryStartStrokeMax) + ", ";
   jsonPayload += "\"total_sms_count\": \"" + String(totalSMSCount) + "\" ";
   jsonPayload += "}";
 

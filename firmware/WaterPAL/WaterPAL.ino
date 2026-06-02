@@ -65,6 +65,7 @@ char sms_buffer[256];
 #include "waterpal_error_logging.h"
 #include "waterpal_modem.h"
 #include "waterpal_sensors.h"
+#include "waterpal_handle_counter.h"
 #include "waterpal_clock.h"
 #include "waterpal_gprs.h"
 
@@ -161,6 +162,12 @@ void setup()
   {
     Serial.println("   Waking up from timer");
   }
+
+  watchdog_pet();
+
+  // Read handle-counter changes before logging the float edge. On an edge wake, strokes since the last wake belong to the previous water state.
+  handle_counter_setup();
+  handle_counter_update(handle_counter_water_is_flowing(last_water_sensor_value));
 
   watchdog_pet();
 
@@ -395,6 +402,8 @@ void doLogWaterInput()
     Serial.println("  Water input sensor was " + String(!water_sensor_value) + " for " + String(time_diff_s) + " seconds");
     Serial.println("  Total water usage time: " + String(total_water_usage_time_s) + " seconds");
 
+    handle_counter_log_water_state_change(handle_counter_water_is_flowing(water_sensor_value), tv.tv_sec);
+
     // Log the time of the edge
     last_water_sensor_edge_time_s = tv.tv_sec; //  reset clock to zero
   }
@@ -430,6 +439,22 @@ void doSendSMS()
 
   Serial.println("  >> Sending SMS with water usage time: " + String(total_water_usage_time_s) + " seconds");
   Serial.println("  >> SMS sent at " + String(timeinfo.tm_hour) + ":" + String(timeinfo.tm_min) + ":" + String(timeinfo.tm_sec));
+
+  uint32_t handle_strokes_total_report = handle_counter_get_handle_strokes_total();
+  uint32_t handle_strokes_flowing_total_report = handle_counter_get_handle_strokes_flowing_total();
+  uint32_t handle_strokes_flowing_per_min_report = total_water_usage_time_s > 0 ? (handle_strokes_flowing_total_report * 60ULL) / total_water_usage_time_s : 0;
+  uint32_t dry_start_count_report = handle_counter_get_dry_start_count();
+  uint32_t dry_start_stroke_total_report = handle_counter_get_dry_start_stroke_total();
+  uint32_t dry_start_stroke_avg_report = handle_counter_get_dry_start_stroke_avg();
+  uint32_t dry_start_stroke_max_report = handle_counter_get_dry_start_stroke_max();
+
+  Serial.println("  >> Handle strokes total: " + String(handle_strokes_total_report));
+  Serial.println("  >> Handle strokes flowing total: " + String(handle_strokes_flowing_total_report));
+  Serial.println("  >> Handle strokes flowing per min: " + String(handle_strokes_flowing_per_min_report));
+  Serial.println("  >> Dry starts: " + String(dry_start_count_report));
+  Serial.println("  >> Dry start stroke total: " + String(dry_start_stroke_total_report));
+  Serial.println("  >> Dry start stroke avg: " + String(dry_start_stroke_avg_report));
+  Serial.println("  >> Dry start stroke max: " + String(dry_start_stroke_max_report));
 
   watchdog_pet();
 
@@ -476,7 +501,14 @@ void doSendSMS()
           batt_val.charging,
           batt_val.percentage,
           batt_val.voltage_mV,
-          bootCount);
+          bootCount,
+          handle_strokes_total_report,
+          handle_strokes_flowing_total_report,
+          handle_strokes_flowing_per_min_report,
+          dry_start_count_report,
+          dry_start_stroke_total_report,
+          dry_start_stroke_avg_report,
+          dry_start_stroke_max_report);
 
         if (!gprs_success)
         {
@@ -512,7 +544,14 @@ void doSendSMS()
           batt_val.charging,
           batt_val.percentage,
           batt_val.voltage_mV,
-          bootCount);
+          bootCount,
+          handle_strokes_total_report,
+          handle_strokes_flowing_total_report,
+          handle_strokes_flowing_per_min_report,
+          dry_start_count_report,
+          dry_start_stroke_total_report,
+          dry_start_stroke_avg_report,
+          dry_start_stroke_max_report);
 
         if (!gprs_success)
         {
@@ -566,7 +605,7 @@ void doSendSMS()
 
 
   // Regular usage message
-  snprintf(sms_buffer, sizeof(sms_buffer), "1,%s,%lld,R,%lld,%lld,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+  snprintf(sms_buffer, sizeof(sms_buffer), "1,%s,%lld,R,%lld,%lld,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%lu,%lu,%lu,%lu,%lu,%lu,%lu",
            // Header:
              // Version (1)
              imei_base64.c_str(),
@@ -586,7 +625,13 @@ void doSendSMS()
              batt_val.percentage, // Battery Charge
              batt_val.voltage_mV, // Battery Voltage (mV)
              bootCount, // Boot Count
-             0); // Flutter Count (TODO)
+             (unsigned long)handle_strokes_total_report, // Handle strokes total
+             (unsigned long)handle_strokes_flowing_total_report, // Handle strokes while water was flowing
+             (unsigned long)handle_strokes_flowing_per_min_report, // Handle strokes per minute while water was flowing
+             (unsigned long)dry_start_count_report, // Dry start count
+             (unsigned long)dry_start_stroke_total_report, // Dry start stroke total
+             (unsigned long)dry_start_stroke_avg_report, // Dry start stroke avg
+             (unsigned long)dry_start_stroke_max_report); // Dry start stroke max
 
   // Send the SMS
   success = modem_broadcast_sms(sms_buffer, WATERPAL_SMS_RETRY_CNT);
@@ -605,6 +650,7 @@ void doSendSMS()
 
     // Save our last send time
     last_sms_send_time_s = tv.tv_sec;
+    handle_counter_mark_report_sent();
     total_sms_send_count++;
   }
   else
